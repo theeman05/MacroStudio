@@ -1,4 +1,4 @@
-import ctypes, cv2, sys, pytesseract, mss, threading, time
+import ctypes, cv2, sys, pytesseract, mss, threading, time, inspect, heapq
 import numpy as np
 import tkinter as tk
 from collections import OrderedDict
@@ -10,7 +10,7 @@ from PyQt5.QtCore import Qt, QPoint, QRect
 from PyQt5.QtGui import QPainter, QPen, QColor
 from pynput.keyboard import Key
 from dataclasses import dataclass
-from typing import Hashable, TypeAlias
+from typing import Hashable, TypeAlias, Callable, List, Generator, Dict
 
 class ClickMode(Enum):
     IDLE = 0
@@ -144,20 +144,11 @@ class TKApp:
         should_run = not was_running if should_run is None else should_run
         self.run_button.config(text="Stop" if should_run else "Run")
         if should_run:
+            self.debug_var.set("Executing macro")
             self.macro_creator.startMacroExecution()
-            self.monitorCompletion()
-        else:
+        elif was_running:
+            self.debug_var.set("Macro stopped")
             self.macro_creator.cancelMacroExecution()
-
-    # Ends run when threads are dead
-    def monitorCompletion(self):
-        if self.macro_creator.isRunningMacros():
-            threads = self.macro_creator.threads
-            if threads and any(t.is_alive() for t in threads):
-                self.root.after(100, self.monitorCompletion)
-            else:
-                self.toggleRun(False)
-                self.debug_var.set("Macro completed successfully")
 
     def cleanup(self):
         if self.setup_handler:
@@ -171,22 +162,36 @@ class SetupStep:
 
 MacroSteps: TypeAlias = OrderedDict[Hashable, SetupStep]
 
-
 class MacroAbortException(Exception):
     """Exception raised when a macro is stopped by the user or system."""
     def __init__(self, message="Macro execution was aborted"):
         self.message = message
         super().__init__(self.message)
 
+def macroWait(duration: float):
+    """
+    Yields control back to the scheduler for 'duration' seconds.
+    Call "yield from" on this method to yield correctly
+    Usage in task: yield from self.macroWait(2.0)
+    """
+    yield duration
+
+def _wrapStandardFun(func):
+    """
+    Turns a normal function into a generator function
+    """
+    func()
+    yield
 
 class MacroCreator:
     def __init__(self):
-        self.setup_steps: MacroSteps = OrderedDict()
-        self._run_tasks = []
-        self.threads = None
-        self.setup_vars = {}
+        self.setup_steps = OrderedDict()
+        self._run_tasks: List[Callable[[], Generator | None]] = []  # List of generator functions
+        self._task_heap = []
+        self.setup_vars: Dict[Hashable, QRect | QPoint] = {}
         self._root_tk = tk.Tk()
         self._tk_app = TKApp(self, self._root_tk)
+        self._is_running = False
 
     def addSetupStep(self, key: Hashable, mode: ClickMode, display_str: str):
         self.setup_steps[key] = SetupStep(display_str, mode)
@@ -197,43 +202,81 @@ class MacroCreator:
         else:
             self.setup_vars.clear()
 
-    def addRunTask(self, task_func):
-        """
-        Add a run task function which will run in the background while the program is running
-        Ensure that if there are loops, they check macroCreator.isRunningMacros()
-        """
+    def addRunTask(self, task_func: Callable[[], Generator | None]):
         self._run_tasks.append(task_func)
 
     def isRunningMacros(self):
-        return self.threads is not None
+        return self._is_running
 
     def startMacroExecution(self):
-        if not self.isRunningMacros():
-            if len(self.setup_steps) == len(self.setup_vars):
-                threads = self.threads = []
-                for task in self._run_tasks:
-                    thread = threading.Thread(target=task, daemon=True)
-                    threads.append(thread)
-                    thread.start()
+        if self._is_running: return
+        self._is_running = True
+        for task_func in self._run_tasks:
+            if inspect.isgeneratorfunction(task_func):
+                gen = task_func()
             else:
-                self._tk_app.debug_var.set("Cannot run before setup!")
-                self._tk_app.toggleRun(False)
+                gen = _wrapStandardFun(task_func)
+
+            # Push to heap: (Time, ID, Generator)
+            # We use id(gen) as a tie-breaker so Python doesn't compare generators
+            heapq.heappush(self._task_heap, (0, id(gen), gen))
+
+            self._runScheduler()
 
     def cancelMacroExecution(self):
-        self.threads = None
+        if not self._is_running: return
+        self._is_running = False
+        self._task_heap = []
 
-    def macroWait(self, duration: float):
+    def _runScheduler(self):
         """
-        Waits for a duration.
-        Raises MacroAbortException if isRunningMacros becomes False.
+        The heartbeat of the macro. It checks active tasks, runs them if
+        their wait time is over, and schedules the next check.
         """
-        end_time = time.time() + duration
-        while time.time() < end_time:
-            # Check if the user/app signaled to stop
-            if not self.isRunningMacros():
-                raise MacroAbortException()
-            # Short sleep to prevent 100% CPU usage (10ms)
-            time.sleep(0.01)
+        if not self._is_running:
+            return
+
+        current_time = time.time()
+        # Process all tasks that are ready 'right now'
+        while self._task_heap:
+            # 1. Peek at the earliest task (Index 0 is always smallest)
+            wake_time, _, _ = self._task_heap[0]
+
+            # 2. If the earliest task is in the future, we are done for this tick.
+            if wake_time > current_time:
+                break
+
+            # 3. Pop the task (Remove it from heap to run it)
+            _, gen_id, gen = heapq.heappop(self._task_heap)
+
+            try:
+                # 4. Run the task
+                wait_duration = next(gen)
+                if wait_duration is None: wait_duration = 0
+
+                # 5. Push it back with new time
+                next_wake = current_time + float(wait_duration)
+                heapq.heappush(self._task_heap, (next_wake, gen_id, gen))
+            except StopIteration:
+                pass  # Task finished, don't push back
+            except Exception as e:
+                print(f"Error: {e}")
+                self.cancelMacroExecution()
+                return
+
+        if self._task_heap:
+            next_event_time = self._task_heap[0][0]
+            delay_sec = next_event_time - time.time()
+
+            # Convert to ms, ensure at least 1ms, max 50ms
+            delay_ms = int(max(1, min(delay_sec * 1000, 50)))
+
+            # Schedule next tick, but clamp it to 50ms max so we can cancel properly
+            self._root_tk.after(delay_ms, self._runScheduler)
+        else:
+            self._tk_app.debug_var.set("Macro completed successfully")
+            self.cancelMacroExecution()
+            self._tk_app.toggleRun(False)
 
     def mainLoop(self):
         try:
@@ -317,13 +360,13 @@ if __name__ == "__main__":
 
     def some_task():
         print("I am going to sleep")
-        if mackrel_test.macroWait(1):
-            print("We are back")
+        yield from macroWait(1)
+        print("We are back")
 
     def another_task():
         print("I am going to sleep as another task")
-        if mackrel_test.macroWait(1):
-            print("We are back again", mackrel_test.setup_vars["idk"])
+        yield from macroWait(5)
+        print("We are done :D", mackrel_test.setup_vars["idk"])
 
     mackrel_test.addSetupStep("idk", ClickMode.SET_BUTTON, "Select SOmewhere")
 
