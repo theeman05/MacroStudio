@@ -1,8 +1,6 @@
-import ctypes, cv2, sys, pytesseract, mss, threading, time, inspect, heapq
-import numpy as np
+import ctypes, sys, time, inspect, heapq
 import tkinter as tk
 from collections import OrderedDict
-from PIL import Image
 from pynput import mouse, keyboard
 from enum import Enum
 from PyQt5.QtWidgets import QApplication, QWidget
@@ -16,24 +14,6 @@ class ClickMode(Enum):
     IDLE = 0
     SET_BUTTON = 1
     SET_BOUNDS = 2
-
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract'
-
-def captureScreenText(bounds: QRect) -> str:
-    """Capture a screenshot within the bounds and return the text within it"""
-    with mss.mss() as sct:
-        region = {
-            "top": bounds.top(),
-            "left": bounds.left(),
-            "width": bounds.width(),
-            "height": bounds.height(),
-        }
-        np_img = np.array(sct.grab(region))
-        bgr_img = np_img[..., :3]
-        gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
-        # Use binary thresh to improve ocr accuracy
-        _, binary = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
-        return pytesseract.image_to_string(Image.fromarray(binary))
 
 class TransparentOverlay(QWidget):
     def __init__(self):

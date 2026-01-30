@@ -1,13 +1,38 @@
-from macrocreator import MacroCreator, ClickMode, MacroAbortException, captureScreenText, macroWait
+import cv2, pytesseract, mss
+from macrocreator import MacroCreator, ClickMode, MacroAbortException, macroWait
 from pynput.mouse import Controller as MouseController
 from pynput.keyboard import Controller as KeyboardController
+from PyQt5.QtCore import QRect
+from PIL import Image
+import numpy as np
+
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract'
 
 mouse_controller = MouseController()
 keyboard_controller = KeyboardController()
 
 castle_macro = MacroCreator()
+
 castle_macro.addSetupStep("start_point", ClickMode.SET_BUTTON, "Select start/stop button")
 castle_macro.addSetupStep("wave_rect", ClickMode.SET_BOUNDS, "Click and drag to set wave bounds")
+
+def captureScreenText(bounds: QRect) -> str:
+    """Capture a screenshot within the bounds and return the text within it"""
+    region = {
+        "top": bounds.top(),
+        "left": bounds.left(),
+        "width": bounds.width(),
+        "height": bounds.height(),
+    }
+    with mss.mss() as sct:
+        screenshot = sct.grab(region)
+
+    np_img = np.array(screenshot)
+    bgr_img = np_img[..., :3]
+    gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+    # Use binary thresh to improve ocr accuracy
+    _, binary = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
+    return pytesseract.image_to_string(Image.fromarray(binary))
 
 def safeHoldKey(key, duration: float):
     """Safely hold a key for the given duration (in seconds), always releases the key"""
