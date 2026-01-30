@@ -1,10 +1,15 @@
 import cv2, pytesseract, mss
-from macrocreator import MacroCreator, ClickMode, MacroAbortException, macroWait
+from macrocreator import MacroCreator, ClickMode, macroWait
+from enum import Enum, auto
 from pynput.mouse import Controller as MouseController
 from pynput.keyboard import Controller as KeyboardController
 from PyQt5.QtCore import QRect
 from PIL import Image
 import numpy as np
+
+class StepKey(Enum):
+    START_POINT = auto()
+    WAVE_RECT = auto()
 
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract'
 
@@ -13,8 +18,8 @@ keyboard_controller = KeyboardController()
 
 castle_macro = MacroCreator()
 
-castle_macro.addSetupStep("start_point", ClickMode.SET_BUTTON, "Select start/stop button")
-castle_macro.addSetupStep("wave_rect", ClickMode.SET_BOUNDS, "Click and drag to set wave bounds")
+castle_macro.addSetupStep(StepKey.START_POINT, ClickMode.SET_BUTTON, "Select start/stop button")
+castle_macro.addSetupStep(StepKey.WAVE_RECT, ClickMode.SET_BOUNDS, "Click and drag to set wave bounds")
 
 def captureScreenText(bounds: QRect) -> str:
     """Capture a screenshot within the bounds and return the text within it"""
@@ -44,15 +49,11 @@ def safeHoldKey(key, duration: float):
 
 def moveCharacter():
     """Periodically moves the character while running the macros"""
-    try:
-        while castle_macro.isRunningMacros():
-            yield from safeHoldKey("W", 2)
-            yield from safeHoldKey("A", 4)
-            yield from safeHoldKey("S", 2)
-            yield from safeHoldKey("D", 4)
-    except MacroAbortException:
-        # Macro was aborted during waiting
-        return
+    while castle_macro.isRunningMacros():
+        yield from safeHoldKey("W", 2)
+        yield from safeHoldKey("A", 4)
+        yield from safeHoldKey("S", 2)
+        yield from safeHoldKey("D", 4)
 
 def monitorMatchStatus():
     """Monitors the match status and starts or stops the game"""
