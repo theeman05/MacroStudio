@@ -1,5 +1,5 @@
 import cv2, pytesseract, mss
-from macrocreator import MacroCreator, ClickMode, macroWait
+#from main import MacroCreator, ClickMode, macroWait
 from enum import Enum, auto
 from pynput.mouse import Controller as MouseController
 from pynput.keyboard import Controller as KeyboardController
