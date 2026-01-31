@@ -1,6 +1,6 @@
+import time
 from typing import TYPE_CHECKING
 from utils import macroSleep
-import time
 
 if TYPE_CHECKING:
     from engine import MacroCreator

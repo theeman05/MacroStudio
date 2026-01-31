@@ -4,3 +4,4 @@ pydirectinput-rgx
 mss
 pillow
 PyQt6
+pynput

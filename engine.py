@@ -3,7 +3,7 @@ import tkinter as tk
 from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Hashable, List, Generator
-from types_and_enums import ClickMode, SetupStep, TaskFunc, MacroAbortException, SetupVariable, SetupVariables
+from types_and_enums import ClickMode, SetupStep, TaskFunc, SetupVariable, SetupVariables
 from task_controller import TaskController
 from gui import TKApp
 
@@ -11,7 +11,7 @@ from gui import TKApp
 class TaskState:
     og_func: TaskFunc
     generation: int= 0
-    is_paused: bool= False
+    paused: bool= False
 
 class MacroCreator:
     def __init__(self):
@@ -21,7 +21,9 @@ class MacroCreator:
         self._setup_vars: SetupVariables = {}
         self._root_tk = tk.Tk()
         self._tk_app = TKApp(self, self._root_tk)
-        self._is_running = False
+        self._running = False
+        self._paused = False
+        self._closing = False
 
     def addSetupStep(self, key: Hashable, mode: ClickMode, display_str: str):
         """
@@ -54,18 +56,18 @@ class MacroCreator:
 
     def isRunningMacros(self):
         """Check if the creator is running any macros."""
-        return self._is_running
+        return self._running
 
-    def scheduleController(self, controller: TaskController, generator: Generator, wake_time: float):
-        """Schedule a controller to run at the wake time with the given generator assuming macros are running."""
+    def scheduleController(self, controller: TaskController, version: int, wake_time: float):
+        """Schedule a controller to run at the wake time assuming macros are running."""
         if self.isRunningMacros():
             controller.wake_time = wake_time
-            heapq.heappush(self._task_heap, (controller, generator))
+            heapq.heappush(self._task_heap, (controller, version))
 
     def startMacroExecution(self):
         """Begin executing macros."""
-        if self._is_running: return
-        self._is_running = True
+        if self._running: return
+        self._running = True
 
         # Restart state of controllers and push them to our queue
         for controller in self._task_controllers:
@@ -84,48 +86,67 @@ class MacroCreator:
 
     def cancelMacroExecution(self):
         """Cancel currently executing macros."""
-        if not self._is_running: return
-        self._is_running = False
+        if not self._running: return
+        self._running = self._paused = False
         prev_heap = self._task_heap
-        self._tk_app.toggleRun(False)
+        if not self._closing:
+            self._tk_app.toggleRun(False)
         self._task_heap = []
         # Cleanup previous tasks that were going to run
         for controller, _ in prev_heap:
             controller.stop()
 
-        # Checks active tasks, runs them if their wait time is over, and schedules the next check
+    def toggleMacroExecution(self):
+        """Toggles macro execution."""
+        prev_heap = self._task_heap
+        if not self._running:
+            self._paused = False
+            self.startMacroExecution()
+        elif self._paused:
+            # Discard old heap since tasks will be re-added upon resuming
+            self._task_heap = []
+            # Resume items in the heap
+            for controller, _ in prev_heap:
+                controller.resume()
+            self._paused = False
+        else:
+            # Pause items in the heap so they know when to resume
+            for controller, _ in prev_heap:
+                controller.pause()
+            self._paused = True
+
+    # Checks active tasks, runs them if their wait time is over, and schedules the next check
     def _runScheduler(self):
-        if not self._is_running:
-            return
+        if not self._running: return
 
         current_time = time.time()
         # Process all tasks that are ready 'right now'
         while self._task_heap:
             # Peek time and task ID
-            task_controller, prev_gen = self._task_heap[0]
-            # If generators differ, it should be removed from the heap, so we don't want to wait until awake
-            if task_controller.wake_time > current_time and prev_gen == task_controller.getGenerator():
+            task_controller, prev_version = self._task_heap[0]
+            # If generations differ, it should be removed from the heap, so we don't want to wait until awake
+            if self._paused or task_controller.wake_time > current_time and prev_version == task_controller.getGeneration():
                 break
 
             # Pop Task
-            task_controller, gen = heapq.heappop(self._task_heap)
+            task_controller, version = heapq.heappop(self._task_heap)
 
-            # If generators differ, drop it
-            if gen != task_controller.getGenerator():
+            # If generations differ, drop it
+            if version != task_controller.getGeneration():
                 continue  # Discard old task if generations differ
 
             if task_controller.isPaused():
-                # If the controller is paused, go back to it again after a little
-                self.scheduleController(task_controller, gen, current_time + 0.1)
+                # If the controller is paused, go back to it again after a little to see if it's unpaused
+                self.scheduleController(task_controller, version, current_time + 0.1)
                 continue
 
             try:
                 # Run the task using next
-                wait_duration = next(gen)
+                wait_duration = next(task_controller)
                 if wait_duration is None: wait_duration = 0
 
                 # Push it back with new time
-                self.scheduleController(task_controller, gen, current_time + float(wait_duration))
+                self.scheduleController(task_controller, version, current_time + float(wait_duration))
             except StopIteration:
                 task_controller.stop()
             except Exception as e:
@@ -134,9 +155,13 @@ class MacroCreator:
                 self.cancelMacroExecution()
                 return
 
-        if self._task_heap:
-            next_event_time = self._task_heap[0][0].wake_time
-            delay_sec = next_event_time - time.time()
+        if self._task_heap or self._paused:
+            if not self._paused:
+                next_event_time = self._task_heap[0][0].wake_time
+                delay_sec = next_event_time - time.time()
+            else:
+                # We're paused, wait a little and check again
+                delay_sec = .01
 
             # Convert to ms, ensure at least 1ms, max 50ms
             delay_ms = int(max(1, min(delay_sec * 1000, 50)))
@@ -148,26 +173,14 @@ class MacroCreator:
             self.cancelMacroExecution()
             self._tk_app.toggleRun(False)
 
-    def threadSleep(self, duration: float = .01):
-        """
-        Blocks the current thread until the duration is met.
-        :param duration: Duration to sleep the thread for in seconds.
-        :raise MacroAbortException: If creator is no longer running.
-        """
-        end_time = time.time() + duration
-
-        while time.time() < end_time:
-            # Check if the user/app signaled to stop
-            if not self.isRunningMacros():
-                raise MacroAbortException()
-            # Short sleep to prevent 100% CPU usage (10ms)
-            time.sleep(0.01)
+    def isPaused(self):
+        return self._paused
 
     def mainLoop(self):
         try:
             self._root_tk.mainloop()
         except KeyboardInterrupt:
             pass
-
+        self._closing = True
         self.cancelMacroExecution()
         self._tk_app.cleanup()
