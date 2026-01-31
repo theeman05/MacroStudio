@@ -1,27 +1,36 @@
 import ctypes, sys
 import tkinter as tk
 from pynput import mouse, keyboard
-from PyQt5.QtWidgets import QApplication, QWidget
-from PyQt5.QtCore import Qt, QPoint, QRect
-from PyQt5.QtGui import QPainter, QPen, QColor
 from pynput.keyboard import Key
+from PyQt6.QtWidgets import QApplication, QWidget
+from PyQt6.QtCore import Qt, QPoint, QRect
+from PyQt6.QtGui import QPainter, QPen, QColor
 from types_and_enums import ClickMode, MacroSteps
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from engine import MacroCreator
 
+
 class TransparentOverlay(QWidget):
     def __init__(self):
-        self.q_app = QApplication(sys.argv)
+        self.q_app = QApplication.instance()
+        if not self.q_app:
+            self.q_app = QApplication(sys.argv)
+
         super().__init__()
+
         self.setWindowFlags(
-            Qt.FramelessWindowHint |
-            Qt.WindowStaysOnTopHint |
-            Qt.Tool  # Prevents it from showing in the taskbar
+            Qt.WindowType.FramelessWindowHint |
+            Qt.WindowType.WindowStaysOnTopHint |
+            Qt.WindowType.Tool  # Prevents showing in taskbar
         )
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setGeometry(0, 0, 2560, 1440)  # Set to screen resolution
+
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+        screen = self.q_app.primaryScreen()
+        self.setGeometry(screen.geometry())
+
         self.show()
         self.set_click_through(True)
         self.render_geometry: dict | None = None
@@ -44,18 +53,21 @@ class TransparentOverlay(QWidget):
                     print(f'UNEXPECTED OBJECT {type(obj)} FOUND')
 
     def set_click_through(self, enable: bool):
-        hwnd = self.winId().__int__()
+        hwnd = int(self.winId())
+
         ex_style = ctypes.windll.user32.GetWindowLongW(hwnd, -20)
 
         if enable:
-            new_style = ex_style | 0x80000 | 0x20  # WS_EX_LAYERED | WS_EX_TRANSPARENT
+            new_style = ex_style | 0x80000 | 0x20
         else:
-            new_style = ex_style & ~0x20  # Remove WS_EX_TRANSPARENT, but keep WS_EX_LAYERED
+            new_style = ex_style & ~0x20
 
         ctypes.windll.user32.SetWindowLongW(hwnd, -20, new_style)
 
     def destroy(self, destroyWindow: bool = True, destroySubWindows: bool = True):
-        self.q_app.exit()
+        # Only exit if we hold the reference, though usually main.py handles this
+        if self.q_app:
+            self.q_app.exit()
         super().destroy(destroyWindow, destroySubWindows)
 
 class TKApp:

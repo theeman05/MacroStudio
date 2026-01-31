@@ -1,0 +1,6 @@
+opencv-python
+pytesseract
+pydirectinput-rgx
+mss
+pillow
+PyQt6

@@ -30,15 +30,20 @@ class TaskController:
         """Allows the task to continue from where it left off. If the task finished already, does nothing."""
         self._paused = False
 
-    def stop(self):
-        """Stops a task, entirely, allowing execution to finish"""
+    def stop(self, new_generator: Generator=None):
+        """
+        Stops a task on its next cycle, allowing execution to finish. Cleans up old generator object.
+        :param new_generator: If present, sets the current generator to the passed one.
+        """
+        generator = self._generator
         self._paused = False
-        self._generator = None
+        self._generator = new_generator
+        if generator:
+            generator.close()
 
     def restart(self):
         """Kills the current instance of the task and starts a fresh one."""
-        self._generator = _tryWrapFun(self.func)
-        self._paused = False
+        self.stop(_tryWrapFun(self.func))
         self._creator.scheduleController(self, self._generator, 0)
 
     def isPaused(self):
