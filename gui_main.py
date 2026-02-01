@@ -157,10 +157,10 @@ class MainWindow(QMainWindow):
         self.main_layout.setSpacing(10)
 
         # Build UI components
-        self._setup_header()
-        self._setup_controls()
-        self._setup_split_view()
-        self._setup_statusbar()
+        self._setupHeader()
+        self._setupControls()
+        self._setupSplitView()
+        self._setupStatusBar()
 
         # Do connections
         self.hotkey_signal.connect(self._onHotkey)
@@ -173,7 +173,7 @@ class MainWindow(QMainWindow):
         # TODO: Make table items editable?
         # self.setup_table.itemChanged.connect(self._on_table_changed)
 
-    def _setup_header(self):
+    def _setupHeader(self):
         """Top bar with Title and Overlay Toggle"""
         header_layout = QHBoxLayout()
 
@@ -183,8 +183,8 @@ class MainWindow(QMainWindow):
         self.btn_overlay = QPushButton("Toggle Overlay")
         self.btn_overlay.setCheckable(True)
         self.btn_overlay.setChecked(True)
-        self.toggle_overlay()
-        self.btn_overlay.clicked.connect(self.toggle_overlay)
+        self.toggleOverlay()
+        self.btn_overlay.clicked.connect(self.toggleOverlay)
 
         header_layout.addWidget(title)
         header_layout.addStretch()
@@ -199,26 +199,26 @@ class MainWindow(QMainWindow):
         line.setStyleSheet("background-color: #333;")
         self.main_layout.addWidget(line)
 
-    def _setup_controls(self):
+    def _setupControls(self):
         """The main action buttons"""
         control_layout = QHBoxLayout()
 
         self.btn_start = QPushButton("START [F6]")
         self.btn_start.setObjectName("btn_start")  # ID for CSS
         self.btn_start.setMinimumHeight(40)
-        self.btn_start.clicked.connect(self.on_start_click)
+        self.btn_start.clicked.connect(self.onStartClicked)
 
         self.btn_stop = QPushButton("STOP [F10]")
         self.btn_stop.setObjectName("btn_stop")
         self.btn_stop.setMinimumHeight(40)
-        self.btn_stop.clicked.connect(self.stop_macro_visuals)
+        self.btn_stop.clicked.connect(self.stopMacroVisuals)
 
         control_layout.addWidget(self.btn_start, 3)
         control_layout.addWidget(self.btn_stop, 2)
 
         self.main_layout.addLayout(control_layout)
 
-    def _setup_split_view(self):
+    def _setupSplitView(self):
         """Splitter between Setup List and Console"""
         splitter = QSplitter(Qt.Orientation.Vertical)
 
@@ -247,7 +247,7 @@ class MainWindow(QMainWindow):
 
         self.main_layout.addWidget(splitter)
 
-    def _setup_statusbar(self):
+    def _setupStatusBar(self):
         self.status = QStatusBar()
         self.setStatusBar(self.status)
 
@@ -262,7 +262,7 @@ class MainWindow(QMainWindow):
         self.status.addPermanentWidget(self.status_label)
         self.status.addPermanentWidget(self.progress)
 
-    def _on_table_changed(self, item):
+    def _onTableChanged(self, item):
         """
         Triggered when ANY cell is changed (by user or code).
         """
@@ -286,13 +286,13 @@ class MainWindow(QMainWindow):
 
     def _onHotkey(self, hotkey_id: str):
         if hotkey_id == "F6":
-            self.on_start_click()
+            self.onStartClicked()
         elif hotkey_id == "F10":
-            self.stop_macro_visuals()
+            self.stopMacroVisuals()
 
     # --- FUNCTIONALITY HOOKS ---
 
-    def add_setup_item(self, var_id: Hashable, var_type, default_val: object=None, var_desc: str=None):
+    def addSetupItem(self, var_id: Hashable, var_type, default_val: object=None, var_desc: str=None):
         """
         Adds a row WITHOUT triggering the 'itemChanged' signal.
         """
@@ -314,7 +314,7 @@ class MainWindow(QMainWindow):
 
         # Col 2: Value
         self.setup_table.setItem(row, 2, QTableWidgetItem(""))
-        self.update_variable_value(row, default_val)
+        self.updateVariableValue(row, default_val)
 
         # Col 3: The "Pick" Button
         # We only add a button if the type requires Mouse Input
@@ -323,7 +323,7 @@ class MainWindow(QMainWindow):
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
 
         # LOGIC: Use partial to freeze the var_id and type into the function call
-        btn.clicked.connect(partial(self.on_pick_click, row, var_id, var_type, var_desc))
+        btn.clicked.connect(partial(self.onPickClick, row, var_id, var_type, var_desc))
 
         # INSERT: Add widget to the cell
         self.setup_table.setCellWidget(row, 3, btn)
@@ -338,7 +338,7 @@ class MainWindow(QMainWindow):
         sb = self.console.verticalScrollBar()
         sb.setValue(sb.maximum())
 
-    def toggle_overlay(self):
+    def toggleOverlay(self):
         if self.btn_overlay.isChecked():
             self.btn_overlay.setStyleSheet("background-color: #d29922; color: #fff;")  # Yellow
             self.overlay.show()
@@ -346,43 +346,43 @@ class MainWindow(QMainWindow):
             self.btn_overlay.setStyleSheet("")
             self.overlay.hide()
 
-    def on_pick_click(self, row, var_id, var_type, var_desc):
+    def onPickClick(self, row, var_id, var_type, var_desc):
         """Emits signal to Engine to start the picking process"""
         self.request_capture_signal.emit(row, var_id, var_type, var_desc)
 
-    def update_variable_value(self, row: int, new_value=None):
+    def updateVariableValue(self, row: int, new_value=None):
         """Helper for the Engine to call after capture is done"""
         self.setup_table.item(row, 2).setText(new_value is not None and str(new_value) or "")
 
-    def on_start_click(self):
+    def onStartClicked(self):
         if not self.running:
             # Case 1: Starting from scratch
-            self.start_macro_visuals()
+            self.startMacroVisuals()
             self.start_signal.emit()
         elif not self.paused:
             # Case 2: Currently Running -> User wants to PAUSE
-            self.pause_macro_visuals()
+            self.pauseMacroVisuals()
             self.pause_signal.emit()
         else:
             # Case 3: Currently Paused -> User wants to RESUME
-            self.resume_macro_visuals()
+            self.resumeMacroVisuals()
             self.start_signal.emit()
 
-    def start_macro_visuals(self):
+    def startMacroVisuals(self):
         self.running = True
         self.paused = False
         self._updateStartBtnAndStatus("PAUSE [F6]","RUNNING", 0)
 
-    def pause_macro_visuals(self):
+    def pauseMacroVisuals(self):
         self.paused = True
         self._updateStartBtnAndStatus("RESUME","PAUSED", 100)
         self.progress.setValue(100)
 
-    def resume_macro_visuals(self):
+    def resumeMacroVisuals(self):
         self.paused = False
         self._updateStartBtnAndStatus("PAUSE [F6]","RUNNING", 0)
 
-    def stop_macro_visuals(self):
+    def stopMacroVisuals(self):
         self.running = False
         self.paused = False
         self._updateStartBtnAndStatus("START [F6]","IDLE", 100)
@@ -412,9 +412,9 @@ if __name__ == "__main__":
     window = MainWindow()
 
     # Add dummy data to show off the table
-    window.add_setup_item("farm_location", "ClickMode.SET_POS", "(1920, 1080)")
-    window.add_setup_item("loop_delay", "ClickMode.NUMBER", "5.2")
-    window.add_setup_item("enable_combat", "ClickMode.BOOL", "True")
+    window.addSetupItem("farm_location", int, 1)
+    window.addSetupItem("loop_delay", "ClickMode.NUMBER", "5.2")
+    window.addSetupItem("enable_combat", "ClickMode.BOOL", "True")
 
     window.show()
     sys.exit(window.app.exec())

@@ -57,11 +57,11 @@ class MacroCreator:
             val_str = self._setup_vars.get(var)
 
         # 2. Save and Update UI
-        self.ui.update_variable_value(row, val_str)
+        self.ui.updateVariableValue(row, val_str)
 
         # 3. Restore State
         self.overlay.setClickThrough(True)
-        self.ui.toggle_overlay()
+        self.ui.toggleOverlay()
         self.ui.show()
 
     def addVariable(self, key: Hashable, val_type: Pickable | object, default_val: object=None, display_str: str=None):
@@ -72,7 +72,7 @@ class MacroCreator:
         :param default_val: The default value of this step.
         :param display_str: The string to display while the variable is being chosen (if applicable)
         """
-        self.ui.add_setup_item(key, val_type, default_val, display_str)
+        self.ui.addSetupItem(key, val_type, default_val, display_str)
         if default_val is not None:
             self._setup_vars[key] = default_val
 
@@ -108,7 +108,7 @@ class MacroCreator:
         self._worker.paused_at = 0
         self._worker.running = True
         self._worker.reloadControllers(self._task_controllers)
-        self.ui.start_macro_visuals()
+        self.ui.startMacroVisuals()
         self.ui.log("Starting...")
         self._worker.start()
 
@@ -117,12 +117,12 @@ class MacroCreator:
         if not self.isRunningMacros(): return
         self.ui.log("Cancelled Execution" if not completed else "Macro Completed Successfully")
         self._worker.stop()
-        self.ui.stop_macro_visuals()
+        self.ui.stopMacroVisuals()
 
     def pauseMacroExecution(self):
         if self.isRunningMacros() and not self._worker.paused_at:
             self._worker.pause()
-            self.ui.pause_macro_visuals()
+            self.ui.pauseMacroVisuals()
             self.ui.log("Paused Execution")
 
     def isPaused(self):
@@ -133,7 +133,7 @@ class MacroCreator:
         if self.isRunningMacros() and self._worker.paused_at:
             self.ui.log(f"Resumed Execution After {time.time() - paused_at} Seconds.")
             self._worker.resume()
-            self.ui.resume_macro_visuals()
+            self.ui.resumeMacroVisuals()
 
     def mainLoop(self):
         self.ui.show()
