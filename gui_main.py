@@ -7,7 +7,9 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtCore import Qt, pyqtSignal
 from functools import partial
-from typing import cast, Hashable
+from typing import Hashable
+from pynput import keyboard
+from overlay import TransparentOverlay
 
 # --- THEME & STYLING (QSS) ---
 # I'm NGL, I just used AI for this lmaooo
@@ -62,6 +64,17 @@ QPushButton#btn_pick {
 }
 QPushButton#btn_pick:hover { background-color: #3a6ea5; }
 
+QProgressBar {
+    border: 1px solid #bbb;
+    border-radius: 4px;
+    text-align: center;
+}
+
+QProgressBar::chunk {
+    background-color: #4CAF50; /* Green */
+    width: 20px;
+}
+
 /* DYNAMIC STATES */
 QPushButton#btn_start[state="paused"] {
     background-color: #d29922;
@@ -70,6 +83,10 @@ QPushButton#btn_start[state="paused"] {
 QPushButton#btn_start[state="paused"]:hover {
     background-color: #eac54f; /* Lighter Orange for Hover */
     border-color: #d29922;
+}
+
+QProgressBar[state="paused"]::chunk {
+    background-color: #FFEB3B; /* Yellow */
 }
 
 /* --- Table (Setup Steps) --- */
@@ -113,14 +130,19 @@ class MainWindow(QMainWindow):
     stop_signal = pyqtSignal()
     pause_signal = pyqtSignal()
     variable_edited = pyqtSignal(str, str) # var_id, new value string
-    request_capture_signal = pyqtSignal(int, object, object, str) # Column number, var_id, var_type, display_str
+    request_capture_signal = pyqtSignal(int, object, object, object) # Column number, var_id, var_type, display_str | None
+    hotkey_signal = pyqtSignal(str)
 
-    def __init__(self, overlay):
+    def __init__(self):
+        self.app = QApplication(sys.argv)
         super().__init__()
         self.setWindowTitle("Macro Engine v1.0")
         self.resize(1000, 700)
 
-        self.overlay = overlay
+        self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint)
+
+        self.overlay = TransparentOverlay(self.app)
+
         self.paused = False
         self.running = False
 
@@ -141,6 +163,13 @@ class MainWindow(QMainWindow):
         self._setup_statusbar()
 
         # Do connections
+        self.hotkey_signal.connect(self._onHotkey)
+
+        self.listener = keyboard.GlobalHotKeys({
+            '<f10>': lambda: self.hotkey_signal.emit("F10"),
+            '<f6>': lambda: self.hotkey_signal.emit("F6")
+        })
+        self.listener.start()
         # TODO: Make table items editable?
         # self.setup_table.itemChanged.connect(self._on_table_changed)
 
@@ -174,12 +203,12 @@ class MainWindow(QMainWindow):
         """The main action buttons"""
         control_layout = QHBoxLayout()
 
-        self.btn_start = QPushButton("START ENGINE")
+        self.btn_start = QPushButton("START [F6]")
         self.btn_start.setObjectName("btn_start")  # ID for CSS
         self.btn_start.setMinimumHeight(40)
         self.btn_start.clicked.connect(self.on_start_click)
 
-        self.btn_stop = QPushButton("STOP")
+        self.btn_stop = QPushButton("STOP [F10]")
         self.btn_stop.setObjectName("btn_stop")
         self.btn_stop.setMinimumHeight(40)
         self.btn_stop.clicked.connect(self.stop_macro_visuals)
@@ -222,13 +251,13 @@ class MainWindow(QMainWindow):
         self.status = QStatusBar()
         self.setStatusBar(self.status)
 
-        self.status_label = QLabel("STATUS: READY")
+        self.status_label = QLabel("STATUS: IDLE")
         self.status_label.setStyleSheet("font-weight: bold; margin-right: 15px;")
 
         self.progress = QProgressBar()
         self.progress.setFixedWidth(200)
         self.progress.setTextVisible(False)
-        self.progress.setStyleSheet("QProgressBar::chunk { background-color: #2ea043; }")
+        _set_btn_state(self.progress, "")
 
         self.status.addPermanentWidget(self.status_label)
         self.status.addPermanentWidget(self.progress)
@@ -255,9 +284,15 @@ class MainWindow(QMainWindow):
         print(f"DEBUG: GUI changed {variable_id} -> {new_value}")
         self.variable_edited.emit(variable_id, new_value)
 
+    def _onHotkey(self, hotkey_id: str):
+        if hotkey_id == "F6":
+            self.on_start_click()
+        elif hotkey_id == "F10":
+            self.stop_macro_visuals()
+
     # --- FUNCTIONALITY HOOKS ---
 
-    def add_setup_item(self, var_id: Hashable, var_type, var_desc, default_val: str=""):
+    def add_setup_item(self, var_id: Hashable, var_type, default_val: object=None, var_desc: str=None):
         """
         Adds a row WITHOUT triggering the 'itemChanged' signal.
         """
@@ -278,7 +313,8 @@ class MainWindow(QMainWindow):
         self.setup_table.setItem(row, 1, type_item)
 
         # Col 2: Value
-        self.setup_table.setItem(row, 2, QTableWidgetItem(str(default_val)))
+        self.setup_table.setItem(row, 2, QTableWidgetItem(""))
+        self.update_variable_value(row, default_val)
 
         # Col 3: The "Pick" Button
         # We only add a button if the type requires Mouse Input
@@ -314,12 +350,9 @@ class MainWindow(QMainWindow):
         """Emits signal to Engine to start the picking process"""
         self.request_capture_signal.emit(row, var_id, var_type, var_desc)
 
-    def update_variable_value(self, row: int, new_value):
+    def update_variable_value(self, row: int, new_value=None):
         """Helper for the Engine to call after capture is done"""
         self.setup_table.item(row, 2).setText(new_value is not None and str(new_value) or "")
-        pick_btn = cast(QPushButton, self.setup_table.cellWidget(row, 3))
-        pick_btn.setText("Pick")
-        _set_btn_state(pick_btn, "")
 
     def on_start_click(self):
         if not self.running:
@@ -338,29 +371,30 @@ class MainWindow(QMainWindow):
     def start_macro_visuals(self):
         self.running = True
         self.paused = False
-        self._updateStartBtnAndStatus("PAUSE","RUNNING", "Starting...", 0)
+        self._updateStartBtnAndStatus("PAUSE [F6]","RUNNING", 0)
 
     def pause_macro_visuals(self):
         self.paused = True
-        self._updateStartBtnAndStatus("RESUME","PAUSED", "Macro Paused.", 100)
+        self._updateStartBtnAndStatus("RESUME","PAUSED", 100)
+        self.progress.setValue(100)
 
     def resume_macro_visuals(self):
         self.paused = False
-        self._updateStartBtnAndStatus("PAUSE","RUNNING", "Resuming...", 0)
+        self._updateStartBtnAndStatus("PAUSE [F6]","RUNNING", 0)
 
     def stop_macro_visuals(self):
         self.running = False
         self.paused = False
-        self._updateStartBtnAndStatus("START ENGINE","STOPPED", "Stopping...", 100)
+        self._updateStartBtnAndStatus("START [F6]","IDLE", 100)
         self.progress.setValue(0)
         self.stop_signal.emit()
 
-    def _updateStartBtnAndStatus(self, text: str, status_text: str, log_text: str, max_range: int):
+    def _updateStartBtnAndStatus(self, text: str, status_text: str, max_range: int):
         self.btn_start.setText(text)
-        _set_btn_state(self.btn_start, "paused" if text == "PAUSE" else "")
+        _set_btn_state(self.btn_start, "paused" if ("PAUSE" in text) else "")
         self.status_label.setText(f"STATUS: {status_text}")
         self.progress.setRange(0, max_range)
-        self.log(log_text)
+        _set_btn_state(self.progress, "paused" if status_text == "PAUSED" else "")
 
     def closeEvent(self, event: QCloseEvent):
         # 1. Emit stop signal to kill any running macros
@@ -375,8 +409,7 @@ class MainWindow(QMainWindow):
 
 # --- ENTRY POINT (For testing visual look) ---
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = MainWindow(app)
+    window = MainWindow()
 
     # Add dummy data to show off the table
     window.add_setup_item("farm_location", "ClickMode.SET_POS", "(1920, 1080)")
@@ -384,4 +417,4 @@ if __name__ == "__main__":
     window.add_setup_item("enable_combat", "ClickMode.BOOL", "True")
 
     window.show()
-    sys.exit(app.exec())
+    sys.exit(window.app.exec())

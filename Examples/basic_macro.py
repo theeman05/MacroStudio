@@ -12,7 +12,6 @@ def anotherTask():
     yield from macroSleep(5)
     print(f"Total Elapsed: {time.time() - start}")
 
-
 class BasicMacro:
     def __init__(self, creator: "MacroCreator"):
         self.engine = creator

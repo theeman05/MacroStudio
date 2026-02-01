@@ -2,6 +2,7 @@ import cv2, pytesseract, mss, pydirectinput
 import numpy as np
 from PyQt6.QtCore import QRect, QPoint
 from PIL import Image
+from pydirectinput import MOUSE_PRIMARY
 
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract'
 
@@ -44,11 +45,11 @@ def safeClickKey(key: str, duration: float):
     finally:
         pydirectinput.keyUp(key)
 
-def clickPosition(coords: QPoint, button: str=None):
+def clickPosition(coords: QPoint, button: str=MOUSE_PRIMARY):
     """
     Clicks at the given coordinates with the button, yields shortly, then releases the mouse.
     :param coords: Coordinates to click at.
-    :param button: Button to use (defaults to mouse primary).
+    :param button: Button to use.
     """
     pydirectinput.mouseDown(coords.x(), coords.y(), button)
     try:

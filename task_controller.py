@@ -1,11 +1,13 @@
 import inspect
 import time
 
+from PyQt6.QtCore import QMutex, QMutexLocker
+
 from types_and_enums import TaskFunc, MacroAbortException
 from typing import TYPE_CHECKING, Generator
 
 if TYPE_CHECKING:
-    from engine import MacroCreator
+    from macro_worker import MacroWorker
 
 def _tryWrapFun(func):
     """If the function isn't a generator, wraps it into a generator function"""
@@ -16,54 +18,72 @@ def _tryWrapFun(func):
         yield
 
 class TaskController:
-    def __init__(self, macro_creator: "MacroCreator", task_func: TaskFunc, task_id: int):
-        self._creator = macro_creator
-        self.id = task_id
+    def __init__(self, scheduler: "MacroWorker", task_func: TaskFunc, task_id: int):
         self.func = task_func
-        self.wake_time = 0
-        self._generation = 0
+
+        self._mutex = QMutex()
+        self._scheduler = scheduler
+        self._id = task_id
         self._generator: Generator | None = None
-        self._paused_at = None
+        self.paused_at = self.wake_time = 0
+        self._generation = 0
 
     def pause(self):
         """Halts the task from running its next step. Execution continues until task finishes."""
-        if not self._paused_at:
-            self._paused_at = time.time()
+        if not self.paused_at:
+            self.paused_at = time.time()
+
+    def _incGen(self):
+        with QMutexLocker(self._mutex):
+            self._generation += 1
 
     def resume(self):
         """Allows the task to continue from where it left off. If the task finished already, does nothing."""
-        paused_at = self._paused_at
+        paused_at = self.paused_at
         if paused_at:
-            # Set the wake time to be how much time was elapsed previously
+            self.paused_at = 0
             prev_wake = self.wake_time
             # Increase version to discard previously scheduled generator
-            self._generation += 1
-            self._paused_at = None
+            self._incGen()
+            # Set the wake time to be how much time was elapsed previously
+            new_wake = max(time.time() + prev_wake - paused_at, 0)
+            self.wake_time = new_wake
             # Reschedule this controller to wake when it is supposed to
-            self._creator.scheduleController(self, self._generation, max(time.time() + prev_wake - paused_at, 0))
+            self._scheduler.scheduleController(self, *self.getCompareVariables())
 
-    def stop(self, new_generator: Generator=None):
-        """
-        Stops a task on its next cycle, allowing execution to finish. Cleans up old generator object.
-        :param new_generator: If present, sets the current generator to the passed one.
-        """
-        self._generation += 1
+    def resetGenerator(self, create_new: bool=True):
+        """Creates a new generator (if create_new is true) and destroys the old one"""
         generator = self._generator
-        self._paused_at = None
-        self._generator = new_generator
+        self._incGen()
+        self.paused_at = 0
+        self.wake_time = 0
+        self._generator = create_new and _tryWrapFun(self.func) or None
         if generator:
             generator.close()
 
+    def stop(self):
+        """
+        Stops a task on its next cycle, allowing execution to finish.
+        """
+        self.resetGenerator(False)
+
     def restart(self):
-        """Kills the current instance of the task and starts a fresh one at the next cycle."""
-        self.stop(_tryWrapFun(self.func))
-        self._creator.scheduleController(self, self._generation, 0)
+        """If running macros, kills the current instance of the task and starts a fresh one at the next cycle."""
+        self.resetGenerator()
+        self._scheduler.scheduleController(self, *self.getCompareVariables())
 
     def isPaused(self):
-        return self._paused_at is not None
+        return self.paused_at or self._scheduler.paused_at
 
     def getGeneration(self):
-        return self._generation
+        """Atomic way to get the current generation"""
+        with QMutexLocker(self._mutex):
+            return self._generation
+
+    def getCompareVariables(self):
+        with QMutexLocker(self._mutex):
+            generation = self._generation
+        return self.wake_time, self._id, generation
 
     def sleep(self, duration: float = .01):
         """
@@ -81,7 +101,7 @@ class TaskController:
             if remaining <= 0:
                 break
 
-            if not self._creator.isRunningMacros() or self.isPaused():
+            if not self._scheduler.isRunning() or self.isPaused():
                 raise MacroAbortException()
 
             # Leave a buffer because Windows sleep is inaccurate.
@@ -93,7 +113,5 @@ class TaskController:
         return self
 
     def __next__(self):
-        return next(self._generator)
-
-    def __lt__(self, other):
-        return (self.wake_time, self.id, self.getGeneration()) < (other.wake_time, other.id, other.getGeneration())
+        with QMutexLocker(self._mutex):
+            return next(self._generator)

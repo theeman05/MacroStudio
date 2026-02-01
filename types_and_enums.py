@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
 from typing import TypeAlias, OrderedDict, Hashable, Callable, Generator, Dict
-from PyQt6.QtCore import QPoint, QRect
 
 class CaptureMode(Enum):
     IDLE = "IDLE"
@@ -26,5 +25,4 @@ class MacroAbortException(Exception):
 
 MacroSteps: TypeAlias = OrderedDict[Hashable, SetupStep]
 TaskFunc: TypeAlias = Callable[[], Generator | None]
-SetupVariable = QRect | QPoint
-SetupVariables: TypeAlias = Dict[Hashable, SetupVariable]
+Pickable: TypeAlias = CaptureMode
