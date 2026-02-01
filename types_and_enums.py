@@ -3,20 +3,20 @@ from enum import Enum
 from typing import TypeAlias, OrderedDict, Hashable, Callable, Generator, Dict
 from PyQt6.QtCore import QPoint, QRect
 
-class ClickMode(Enum):
-    IDLE = 0
-    SET_BUTTON = 1
-    SET_BOUNDS = 2
+class CaptureMode(Enum):
+    IDLE = "IDLE"
+    POINT = "POS"      # Single click
+    REGION = "REGION"  # Drag selection
 
 @dataclass
 class SetupStep:
     display_str: str
-    click_mode: ClickMode
+    capture_mode: CaptureMode
 
 @dataclass
 class SetupStep:
     display_str: str
-    click_mode: ClickMode
+    capture_mode: CaptureMode
 
 class MacroAbortException(Exception):
     """Exception raised when a macro is stopped by the user or system."""

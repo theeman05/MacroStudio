@@ -1,11 +1,15 @@
+import sys
 import time, heapq
-import tkinter as tk
-from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Hashable, List, Generator
-from types_and_enums import ClickMode, SetupStep, TaskFunc, SetupVariable, SetupVariables
 from task_controller import TaskController
-from gui import TKApp
+from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import QRect, QTimer
+from pynput import keyboard
+from types_and_enums import CaptureMode, TaskFunc, SetupVariable, SetupVariables
+from gui_main import MainWindow
+from overlay import TransparentOverlay
+from macro_worker import MacroWorker
 
 @dataclass
 class TaskState:
@@ -15,24 +19,68 @@ class TaskState:
 
 class MacroCreator:
     def __init__(self):
-        self.setup_steps = OrderedDict()
         self._task_controllers: List[TaskController] = []
         self._task_heap: List[(Generator,TaskController)] = []
         self._setup_vars: SetupVariables = {}
-        self._root_tk = tk.Tk()
-        self._tk_app = TKApp(self, self._root_tk)
         self._running = False
         self._paused = False
         self._closing = False
+        self._pending_capture_data = None
+        self._worker = MacroWorker()
 
-    def addSetupStep(self, key: Hashable, mode: ClickMode, display_str: str):
+        # Setup UI stuff
+        self.app = QApplication(sys.argv)
+        self.overlay = TransparentOverlay(self.app)
+        self.ui = MainWindow(self.overlay)
+
+        # Connect Listeners
+        self.ui.start_signal.connect(self.startMacroExecution)
+        self.ui.pause_signal.connect(self.pauseMacroExecution)
+        self.ui.stop_signal.connect(self.cancelMacroExecution)
+        self.ui.request_capture_signal.connect(self._startMouseCapture)
+        self._worker.finished_signal.connect(self.cancelMacroExecution)
+        self.overlay.capture_complete_signal.connect(self.on_capture_complete)
+        self.overlay.capture_cancelled_signal.connect(self.on_capture_complete)
+        self.listener = keyboard.GlobalHotKeys({
+            '<f10>': self.cancelMacroExecution
+        })
+        self.listener.start()
+
+    def _startMouseCapture(self, row, var_id, mode, var_display_text):
+        self._pending_capture_data = (row, var_id)
+        self.ui.hide()
+        self.overlay.render_geometry = self._setup_vars
+        self.overlay.startCapture(mode, var_display_text)
+
+    def on_capture_complete(self, result=None):
+        row, var = self._pending_capture_data
+        self._pending_capture_data = None
+
+        if result:
+            if isinstance(result, QRect):
+                val_str = f"(x:{result.x()}, y:{result.y()}, w:{result.width()}, l:{result.height()})"
+            else:
+                val_str = f"({result.x()}, {result.y()})"
+            self._setup_vars[var] = result
+        else:
+            val_str = self._setup_vars.get(var)
+
+        # 2. Save and Update UI
+        self.ui.update_variable_value(row, val_str)
+
+        # 3. Restore State
+        self.overlay.setClickThrough(True)
+        self.ui.toggle_overlay()
+        self.ui.show()
+
+    def addSetupStep(self, key: Hashable, mode: CaptureMode, display_str: str):
         """
         Add a setup step to gather variables. If key is already present, overwrites the previous step.
         :param key: The key to store the variable under.
         :param mode: The mode of user input.
         :param display_str: The string to display while the step is running.
         """
-        self.setup_steps[key] = SetupStep(display_str, mode)
+        self.ui.add_setup_item(key, mode, display_str)
 
     def finishSetup(self, setup_vars: SetupVariables=None):
         """
@@ -43,6 +91,14 @@ class MacroCreator:
             self._setup_vars = setup_vars
         else:
             self._setup_vars.clear()
+
+    def getVar(self, key: Hashable) -> SetupVariable | None:
+        """
+        Get the value for a setup variable.
+        :param key: The key that the variable should be stored under.
+        :return: The value for a setup variable if present.
+        """
+        return self._setup_vars.get(key)
 
     def addRunTask(self, task_func: TaskFunc) -> TaskController:
         """
@@ -65,24 +121,22 @@ class MacroCreator:
             heapq.heappush(self._task_heap, (controller, version))
 
     def startMacroExecution(self):
-        """Begin executing macros."""
-        if self._running: return
+        """Begin executing macros. If we were paused, resumes execution."""
+        if self._running or self._worker.running:
+            if self._paused:
+                self.resumeMacroExecution()
+            return
+
         self._running = True
 
         # Restart state of controllers and push them to our queue
         for controller in self._task_controllers:
             controller.restart()
 
-        self._tk_app.toggleRun(True)
-        self._runScheduler()
-
-    def getVar(self, key: Hashable) -> SetupVariable | None:
-        """
-        Get the value for a setup variable.
-        :param key: The key that the variable should be stored under.
-        :return: The value for a setup variable if present.
-        """
-        return self._setup_vars.get(key)
+        self.ui.start_macro_visuals()
+        self._worker.paused = False
+        self._worker.running = True
+        self._worker.run()
 
     def cancelMacroExecution(self):
         """Cancel currently executing macros."""
@@ -90,30 +144,29 @@ class MacroCreator:
         self._running = self._paused = False
         prev_heap = self._task_heap
         if not self._closing:
-            self._tk_app.toggleRun(False)
+            self.ui.stop_macro_visuals()
         self._task_heap = []
         # Cleanup previous tasks that were going to run
         for controller, _ in prev_heap:
             controller.stop()
 
-    def toggleMacroExecution(self):
-        """Toggles macro execution."""
+    def pauseMacroExecution(self):
+        if self._running and not self._paused:
+            for controller, _ in self._task_heap:
+                controller.pause()
+            self._paused = True
+            self.ui.pause_macro_visuals()
+
+    def resumeMacroExecution(self):
         prev_heap = self._task_heap
-        if not self._running:
-            self._paused = False
-            self.startMacroExecution()
-        elif self._paused:
+        if self._running and self._paused and prev_heap:
             # Discard old heap since tasks will be re-added upon resuming
             self._task_heap = []
             # Resume items in the heap
             for controller, _ in prev_heap:
                 controller.resume()
             self._paused = False
-        else:
-            # Pause items in the heap so they know when to resume
-            for controller, _ in prev_heap:
-                controller.pause()
-            self._paused = True
+            self.ui.resume_macro_visuals()
 
     # Checks active tasks, runs them if their wait time is over, and schedules the next check
     def _runScheduler(self):
@@ -167,20 +220,22 @@ class MacroCreator:
             delay_ms = int(max(1, min(delay_sec * 1000, 50)))
 
             # Schedule next tick, but clamp it to 50ms max so we can cancel properly
-            self._root_tk.after(delay_ms, self._runScheduler)
+            QTimer.singleShot(delay_ms, self._runScheduler)
         else:
-            self._tk_app.debug_var.set("Macro completed successfully")
+            self.ui.log("Macro completed successfully!")
             self.cancelMacroExecution()
-            self._tk_app.toggleRun(False)
+            self.ui.stop_macro_visuals()
 
     def isPaused(self):
         return self._paused
 
     def mainLoop(self):
         try:
-            self._root_tk.mainloop()
+            self.ui.show()
         except KeyboardInterrupt:
             pass
+
         self._closing = True
         self.cancelMacroExecution()
-        self._tk_app.cleanup()
+        self.app.exit()
+        sys.exit(self.app.exec())
