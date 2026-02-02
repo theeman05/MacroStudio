@@ -119,11 +119,6 @@ class ThreadMacro:
 
 ```
 
-### ⚙️ How it Works Under the Hood
-
-* **Generator Tasks:** Use **Cooperative Multitasking**. The engine cycles through tasks, running them until they `yield`. This makes the bot extremely lightweight and CPU efficient.
-* **Threaded Tasks:** Run in parallel. By using `controller.sleep()`, you bridge the gap, allowing the main engine to safely pause or stop these threads even though they are running outside the main loop.
-
 ### 4. Running the Engine
 
 Launch the GUI. Your tasks and variables will automatically appear.
@@ -145,6 +140,12 @@ if __name__ == "__main__":
 * **Edit Configs:** Click any task to modify its variables.
 * **Start/Pause/Stop:** Use the global controls or manage tasks individually.
 * **Visual Debugging:** Hover over region variables to see them highlighted on screen.
+
+### ⚙️ How it Works Under the Hood
+
+* **Generator Tasks:** Use **Cooperative Multitasking**. The engine cycles through tasks, running them until they `yield`. This makes the bot extremely lightweight and CPU efficient.
+* **Threaded Tasks:** Run in parallel. By using `controller.sleep()`, you bridge the gap, allowing the main engine to safely pause or stop these threads even though they are running outside the main loop.
+
 
 ---
 
