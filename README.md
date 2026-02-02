@@ -146,7 +146,6 @@ if __name__ == "__main__":
 * **Generator Tasks:** Use **Cooperative Multitasking**. The engine cycles through tasks, running them until they `yield`. This makes the bot extremely lightweight and CPU efficient.
 * **Threaded Tasks:** Run in parallel. By using `controller.sleep()`, you bridge the gap, allowing the main engine to safely pause or stop these threads even though they are running outside the main loop.
 
-
 ---
 
 ## 🔮 Roadmap & Coming Soon
@@ -171,7 +170,7 @@ I will be lowering the barrier to entry!
 
 ## 🤝 Contributing
 
-Contributions are welcome! Whether you are fixing bugs, adding new features, or creating example tasks, I would love to see your work :).
+Contributions are welcome! Whether you are fixing bugs, adding new features, or creating example tasks, I would love to see your work :)
 
 1. Fork the Project
 2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
