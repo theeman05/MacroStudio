@@ -7,4 +7,4 @@ if __name__ == "__main__":
     # Add steps and tasks from BasicMacro
     BasicMacro(creator)
 
-    creator.mainLoop()
+    creator.launch()

@@ -21,10 +21,10 @@ class BasicMacro:
         creator.addRunTask(self.someTask)
 
     def someTask(self):
-        print("I am going to sleep")
+        self.engine.ui.log("I am going to sleep")
         yield from macroSleep(1)
-        print("Stopping another")
+        self.engine.ui.log("Stopping another")
         self.another_task_controller.pause()
         yield from macroSleep(1)
-        print("resuming other")
+        self.engine.ui.log("resuming other")
         self.another_task_controller.resume()

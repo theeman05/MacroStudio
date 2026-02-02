@@ -97,7 +97,7 @@ class MacroCreator:
             self._worker.resume()
             self.ui.resumeMacroVisuals()
 
-    def mainLoop(self):
+    def launch(self):
         self.ui.show()
         self.app.exit()
         sys.exit(self.app.exec())
