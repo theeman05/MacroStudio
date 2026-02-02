@@ -1,26 +1,17 @@
 import sys, time
-from dataclasses import dataclass
-from typing import Hashable, List
+from typing import Hashable, List, Dict
 from task_controller import TaskController
-from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import QRect
 from types_and_enums import TaskFunc, Pickable
 from gui_main import MainWindow
-from overlay import TransparentOverlay
 from macro_worker import MacroWorker
+from variable_config import VariableConfig
 
-@dataclass
-class TaskState:
-    og_func: TaskFunc
-    generation: int= 0
-    paused: bool= False
 
 class MacroCreator:
     def __init__(self):
         self._task_controllers: List[TaskController] = []
-        self._setup_vars = {}
+        self._setup_vars: Dict[Hashable, VariableConfig] = {}
         self._closing = False
-        self._pending_capture_data = None
         self._worker = MacroWorker()
 
         # Setup UI stuff
@@ -32,49 +23,19 @@ class MacroCreator:
         self.ui.start_signal.connect(self.startMacroExecution)
         self.ui.pause_signal.connect(self.pauseMacroExecution)
         self.ui.stop_signal.connect(self.cancelMacroExecution)
-        self.ui.request_capture_signal.connect(self._startMouseCapture)
         self._worker.finished_signal.connect(lambda: self.cancelMacroExecution(True))
-        self.overlay.capture_complete_signal.connect(self._onCaptureComplete)
-        self.overlay.capture_cancelled_signal.connect(self._onCaptureComplete)
 
-    def _startMouseCapture(self, row, var_id, mode, var_display_text):
-        self._pending_capture_data = (row, var_id)
-        self.ui.hide()
-        self.overlay.render_geometry = self._setup_vars
-        self.overlay.startCapture(mode, var_display_text)
-
-    def _onCaptureComplete(self, result=None):
-        row, var = self._pending_capture_data
-        self._pending_capture_data = None
-
-        if result:
-            if isinstance(result, QRect):
-                val_str = f"(x:{result.x()}, y:{result.y()}, w:{result.width()}, l:{result.height()})"
-            else:
-                val_str = f"({result.x()}, {result.y()})"
-            self._setup_vars[var] = result
-        else:
-            val_str = self._setup_vars.get(var)
-
-        # 2. Save and Update UI
-        self.ui.updateVariableValue(row, val_str)
-
-        # 3. Restore State
-        self.overlay.setClickThrough(True)
-        self.ui.toggleOverlay()
-        self.ui.show()
-
-    def addVariable(self, key: Hashable, val_type: Pickable | object, default_val: object=None, display_str: str=None):
+    def addVariable(self, key: Hashable, data_type: Pickable | type, default_val: object=None, pick_hint: str=None):
         """
-        Add a setup step to gather variables. If key is already present, overwrites the previous step.
+        Add a setup step to gather variables. If key is already present, overwrites the previous variable.
         :param key: The key to store the variable under.
-        :param val_type: The type of the variable.
+        :param data_type: The data type of the variable.
         :param default_val: The default value of this step.
-        :param display_str: The string to display while the variable is being chosen (if applicable)
+        :param pick_hint: The hint to display while the variable is being picked or hovered over
         """
-        self.ui.addSetupItem(key, val_type, default_val, display_str)
-        if default_val is not None:
-            self._setup_vars[key] = default_val
+        config = VariableConfig(data_type, default_val, pick_hint)
+        self._setup_vars[key] = config
+        self.ui.addSetupItem(key, config)
 
     def getVar(self, key: Hashable):
         """
@@ -82,7 +43,8 @@ class MacroCreator:
         :param key: The key that the variable should be stored under.
         :return: The value for a setup variable if present.
         """
-        return self._setup_vars.get(key)
+        var_config = self._setup_vars.get(key)
+        return var_config and var_config.value or None
 
     def addRunTask(self, task_func: TaskFunc) -> TaskController:
         """

@@ -1,21 +1,12 @@
-from dataclasses import dataclass
 from enum import Enum
-from typing import TypeAlias, OrderedDict, Hashable, Callable, Generator, Dict
+from typing import TypeAlias, Callable, Generator, get_args
+
+from PyQt6.QtCore import QRect, QPoint
+
 
 class CaptureMode(Enum):
-    IDLE = "IDLE"
     POINT = "POS"      # Single click
     REGION = "REGION"  # Drag selection
-
-@dataclass
-class SetupStep:
-    display_str: str
-    capture_mode: CaptureMode
-
-@dataclass
-class SetupStep:
-    display_str: str
-    capture_mode: CaptureMode
 
 class MacroAbortException(Exception):
     """Exception raised when a macro is stopped by the user or system."""
@@ -23,6 +14,7 @@ class MacroAbortException(Exception):
         self.message = message
         super().__init__(self.message)
 
-MacroSteps: TypeAlias = OrderedDict[Hashable, SetupStep]
 TaskFunc: TypeAlias = Callable[[], Generator | None]
-Pickable: TypeAlias = CaptureMode
+Pickable = CaptureMode | QRect | QPoint
+
+PICKABLE_TYPES = get_args(Pickable)

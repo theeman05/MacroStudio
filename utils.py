@@ -51,8 +51,10 @@ def clickPosition(coords: QPoint, button: str=MOUSE_PRIMARY):
     :param coords: Coordinates to click at.
     :param button: Button to use.
     """
-    pydirectinput.mouseDown(coords.x(), coords.y(), button)
+    x, y = coords.x(), coords.y()
+    pydirectinput.mouseDown(x, y, button, tween=.05)
     try:
         yield from macroSleep(.1)
     finally:
-        pydirectinput.mouseUp(coords.x(), coords.y(), button)
+        # Offset slightly so there's a little movement after
+        pydirectinput.mouseUp(x + np.random.randint(-5, 5), y + np.random.randint(-5, 5), button, tween=.1)

@@ -2,14 +2,15 @@ import sys
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QTableWidget, QTableWidgetItem, QHeaderView,
-    QFrame, QTextEdit, QSplitter, QProgressBar, QStatusBar
+    QFrame, QTextEdit, QSplitter, QProgressBar, QStatusBar, QMenu
 )
-from PyQt6.QtGui import QCloseEvent
-from PyQt6.QtCore import Qt, pyqtSignal
-from functools import partial
+from PyQt6.QtGui import QCloseEvent, QBrush, QColor
+from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QTimer, QRect
 from typing import Hashable
 from pynput import keyboard
 from overlay import TransparentOverlay
+from types_and_enums import Pickable, CaptureMode, PICKABLE_TYPES
+from variable_config import VariableConfig
 
 # --- THEME & STYLING (QSS) ---
 # I'm NGL, I just used AI for this lmaooo
@@ -123,14 +124,72 @@ def _set_btn_state(btn, state_value):
     btn.style().unpolish(btn)
     btn.style().polish(btn)
 
+def _safe_cast(value_str, target_type, default=None):
+    """
+    Casts a string to a target type safely.
+    :param value_str: The raw string from the UI (e.g., "123", "True")
+    :param target_type: The type class (int, float, bool, str)
+    :param default: What to return if casting fails (or raise error)
+    """
+    try:
+        # 1. Handle Empty Strings
+        if value_str == "" and target_type is not str:
+            return default
+
+            # 2. Handle Booleans (The Special Case)
+        if target_type is bool:
+            # Check against common string representations
+            return str(value_str).lower() in ("true", "1", "yes", "on")
+
+        # 3. Handle Standard Types (int, float, str)
+        return target_type(value_str)
+
+    except (ValueError, TypeError):
+        print(f"Failed to cast '{value_str}' to {target_type}")
+        return default
+
+def _flashError(item):
+    # 1. Save the original background so we can restore it later
+    # (If the cell has no color, this stores the "transparent/default" brush)
+    original_background = item.background()
+
+    # 2. Set Error Color (Light Red)
+    red_brush = QBrush(QColor("#FFCDD2"))  # A nice soft red
+    item.setBackground(red_brush)
+
+    # 3. Schedule the restoration
+    # We use a lambda to capture the specific item and original color
+    QTimer.singleShot(250, lambda: item.setBackground(original_background))
+
+def _getReadableTypeName(data_type):
+    # 1. Define your dictionary of "Pretty Names"
+    type_map = {
+        int: "Integer",
+        str: "Text",
+        bool: "Boolean",
+        float: "Decimal",
+        QRect: "Region",
+        QPoint: "Point",
+        list: "List",
+        dict: "Dictionary"
+    }
+
+    # 2. Return the mapped name if it exists
+    if data_type in type_map:
+        return type_map[data_type]
+
+    # 3. Fallback: Use the class name (e.g. "MyCustomClass" -> "MyCustomClass")
+    # We create a fallback just in case you add a type later and forget to map it.
+    try:
+        return data_type.__name__.capitalize()
+    except AttributeError:
+        return str(data_type)
 
 class MainWindow(QMainWindow):
     # Signals to talk to your Engine
     start_signal = pyqtSignal()
     stop_signal = pyqtSignal()
     pause_signal = pyqtSignal()
-    variable_edited = pyqtSignal(str, str) # var_id, new value string
-    request_capture_signal = pyqtSignal(int, object, object, object) # Column number, var_id, var_type, display_str | None
     hotkey_signal = pyqtSignal(str)
 
     def __init__(self):
@@ -141,10 +200,11 @@ class MainWindow(QMainWindow):
 
         self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint)
 
-        self.overlay = TransparentOverlay(self.app)
+        self.overlay = TransparentOverlay(self)
 
         self.paused = False
         self.running = False
+        self._pending_capture_item = None
 
         # Apply the Theme
         self.setStyleSheet(DARK_THEME)
@@ -170,8 +230,7 @@ class MainWindow(QMainWindow):
             '<f6>': lambda: self.hotkey_signal.emit("F6")
         })
         self.listener.start()
-        # TODO: Make table items editable?
-        # self.setup_table.itemChanged.connect(self._on_table_changed)
+        self.setup_table.itemChanged.connect(self._onTableChanged)
 
     def _setupHeader(self):
         """Top bar with Title and Overlay Toggle"""
@@ -224,7 +283,7 @@ class MainWindow(QMainWindow):
 
         # 1. SETUP TABLE
         self.setup_table = QTableWidget()
-        labels = ["Variable ID", "Type", "Value", "Action"]
+        labels = ["Variable ID", "Type", "Value"]
         self.setup_table.setColumnCount(len(labels))
         self.setup_table.setHorizontalHeaderLabels(labels)
 
@@ -232,8 +291,6 @@ class MainWindow(QMainWindow):
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # ID fits content
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Type fits content
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)  # Value takes space
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)  # Action is fixed size
-        self.setup_table.setColumnWidth(3, 80)  # 80px for the button
 
         # 2. CONSOLE
         self.console = QTextEdit()
@@ -246,6 +303,14 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(1, 1)  # Console takes 25%
 
         self.main_layout.addWidget(splitter)
+
+        self.setup_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.setup_table.customContextMenuRequested.connect(self._openMenu)
+
+        # Table hover stuff
+        self.setup_table.setMouseTracking(True)
+        self.setup_table.itemEntered.connect(self._onItemHovered)
+        self.setup_table.leaveEvent = self._onTableLeave
 
     def _setupStatusBar(self):
         self.status = QStatusBar()
@@ -270,19 +335,35 @@ class MainWindow(QMainWindow):
         if item.column() != 2:
             return
 
-        # 2. Get the Row index
-        row = item.row()
+        var_config = item.data(Qt.ItemDataRole.UserRole)
+        if var_config is None:
+            return # This wasn't a value cell (maybe it was a header?)
 
-        # 3. Retrieve the Variable ID from Column 0 (which should be read-only)
-        id_item = self.setup_table.item(row, 0)
-        variable_id = id_item.text()
+        if var_config.data_type is bool:
+            var_config.value = item.checkState() == Qt.CheckState.Checked
+        else:
+            success = var_config.parseAndSetValue(item.text().strip())
 
-        # 4. Get the new Value
-        new_value = item.text()
+            if not success:
+                self._updateVariableDisplay(item)
+                _flashError(item)
+            elif var_config.data_type in PICKABLE_TYPES and var_config.value:
+                # Update overlay
+                self.overlay.update()
 
-        # 5. Send it to the Engine
-        print(f"DEBUG: GUI changed {variable_id} -> {new_value}")
-        self.variable_edited.emit(variable_id, new_value)
+    def _onItemHovered(self, item):
+        config = item.data(Qt.ItemDataRole.UserRole)
+        prev_highlighted = self.overlay.highlighted_config
+        self.overlay.highlighted_config = config if (config and config.data_type in PICKABLE_TYPES) else None
+        # If the config changed, update the overlay
+        if prev_highlighted != self.overlay.highlighted_config:
+            self.overlay.update()
+
+    def _onTableLeave(self, event):
+        if self.overlay.highlighted_config:
+            self.overlay.highlighted_config = None
+            self.overlay.update()
+        QTableWidget.leaveEvent(self.setup_table, event)
 
     def _onHotkey(self, hotkey_id: str):
         if hotkey_id == "F6":
@@ -290,9 +371,27 @@ class MainWindow(QMainWindow):
         elif hotkey_id == "F10":
             self.stopMacroVisuals()
 
+    def _openMenu(self, position):
+        item = self.setup_table.itemAt(position)
+        if not item: return
+
+        config = item.data(Qt.ItemDataRole.UserRole)
+        if not config: return
+
+        if config.data_type in PICKABLE_TYPES:
+            menu = QMenu()
+            capture_action = menu.addAction("Capture Data")
+
+            # 3. Connect Action
+            # Use functools.partial to pass the specific config object to your capture tool
+            action = menu.exec(self.setup_table.viewport().mapToGlobal(position))
+
+            if action == capture_action:
+                self._startCaptureOverlay(item, config)
+
     # --- FUNCTIONALITY HOOKS ---
 
-    def addSetupItem(self, var_id: Hashable, var_type, default_val: object=None, var_desc: str=None):
+    def addSetupItem(self, var_id: Hashable, config: VariableConfig):
         """
         Adds a row WITHOUT triggering the 'itemChanged' signal.
         """
@@ -308,28 +407,30 @@ class MainWindow(QMainWindow):
         self.setup_table.setItem(row, 0, id_item)
 
         # Col 1: Type (Read only)
-        type_item = QTableWidgetItem(str(var_type))
+        type_item = QTableWidgetItem(_getReadableTypeName(config.data_type))
         type_item.setFlags(type_item.flags() ^ Qt.ItemFlag.ItemIsEditable)
         self.setup_table.setItem(row, 1, type_item)
 
         # Col 2: Value
-        self.setup_table.setItem(row, 2, QTableWidgetItem(""))
-        self.updateVariableValue(row, default_val)
+        val_item = QTableWidgetItem()
+        if config.data_type is bool:
+            val_item.setFlags(val_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
 
-        # Col 3: The "Pick" Button
-        # We only add a button if the type requires Mouse Input
-        btn = QPushButton("Pick")
-        btn.setObjectName("btn_pick")
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        if config.data_type is QRect:
+            val_item.setToolTip("Format: x, y, width, height | Right click to open action menu")
+        elif config.data_type is QPoint:
+            val_item.setToolTip("Format: x, y | Right click to open action menu")
+        else:
+            val_item.setToolTip(config.pick_hint)
 
-        # LOGIC: Use partial to freeze the var_id and type into the function call
-        btn.clicked.connect(partial(self.onPickClick, row, var_id, var_type, var_desc))
+        self.setup_table.setItem(row, 2, val_item)
+        val_item.setData(Qt.ItemDataRole.UserRole, config)
 
-        # INSERT: Add widget to the cell
-        self.setup_table.setCellWidget(row, 3, btn)
+        # Unblock signals, lol updating variable display unblocks
+        self._updateVariableDisplay(val_item)
 
-        # Unblock signals
-        self.setup_table.blockSignals(False)
+        if config.data_type in PICKABLE_TYPES:
+            self.overlay.render_geometry.append(config)
 
     def log(self, message: str):
         """Thread-safe logging helper"""
@@ -346,13 +447,44 @@ class MainWindow(QMainWindow):
             self.btn_overlay.setStyleSheet("")
             self.overlay.hide()
 
-    def onPickClick(self, row, var_id, var_type, var_desc):
-        """Emits signal to Engine to start the picking process"""
-        self.request_capture_signal.emit(row, var_id, var_type, var_desc)
+    def _startCaptureOverlay(self, item, config: VariableConfig):
+        """Begins the picking process"""
+        self._pending_capture_item = item
+        self.hide()
+        var_type = config.data_type
+        pick_hint = config.pick_hint
+        capture_mode = var_type
+        if var_type is QRect:
+            capture_mode = CaptureMode.REGION
+        elif var_type is QPoint:
+            capture_mode = CaptureMode.POINT
 
-    def updateVariableValue(self, row: int, new_value=None):
-        """Helper for the Engine to call after capture is done"""
-        self.setup_table.item(row, 2).setText(new_value is not None and str(new_value) or "")
+        self.overlay.startCapture(capture_mode, pick_hint)
+
+    def _updateVariableDisplay(self, val_item: QTableWidgetItem):
+        """Update the widget item's display based on the config value"""
+        config: VariableConfig = val_item.data(Qt.ItemDataRole.UserRole)
+        self.setup_table.blockSignals(True)
+        try:
+            if config.data_type is bool:
+                val_item.setCheckState(Qt.CheckState.Checked if config.value else Qt.CheckState.Unchecked)
+            else:
+                val_item.setText(config.getValueStr())
+        finally:
+            self.setup_table.blockSignals(False)
+
+    def afterCaptureEnded(self, result=None):
+        """Should be called after picking completed or exited"""
+        value_item = self._pending_capture_item
+        self._pending_capture_item = None
+        if result:
+            value_item.data(Qt.ItemDataRole.UserRole).value = result # Update config data
+            self._updateVariableDisplay(value_item)  # Update local UI
+
+        # Hide the UI again
+        self.overlay.setClickThrough(True)
+        self.toggleOverlay()
+        self.show()
 
     def onStartClicked(self):
         if not self.running:
@@ -409,12 +541,19 @@ class MainWindow(QMainWindow):
 
 # --- ENTRY POINT (For testing visual look) ---
 if __name__ == "__main__":
+    debug_vars = {}
     window = MainWindow()
 
+    def _addDummyVariable(key: Hashable, data_type: Pickable | object, default_val: object = None,
+                    pick_hint: str = None):
+        config = VariableConfig(data_type, default_val, pick_hint)
+        debug_vars[key] = config
+        window.addSetupItem(key, config)
+
     # Add dummy data to show off the table
-    window.addSetupItem("farm_location", int, 1)
-    window.addSetupItem("loop_delay", "ClickMode.NUMBER", "5.2")
-    window.addSetupItem("enable_combat", "ClickMode.BOOL", "True")
+    _addDummyVariable("farm_location", int, 1)
+    _addDummyVariable("loop_delay", CaptureMode.REGION, None, "Burger")
+    _addDummyVariable("enable_combat", bool, True)
 
     window.show()
     sys.exit(window.app.exec())
