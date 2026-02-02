@@ -1,9 +1,5 @@
 import time
-from typing import TYPE_CHECKING
-from utils import macroSleep
-
-if TYPE_CHECKING:
-    from engine import MacroCreator
+from macro_engine import MacroCreator, macroSleep
 
 
 def anotherTask():
@@ -13,7 +9,7 @@ def anotherTask():
     print(f"Total Elapsed: {time.time() - start}")
 
 class BasicMacro:
-    def __init__(self, creator: "MacroCreator"):
+    def __init__(self, creator: MacroCreator):
         self.engine = creator
 
         # Add run tasks to the creator

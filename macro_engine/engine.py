@@ -1,10 +1,10 @@
 import sys, time
 from typing import Hashable, List, Dict
-from task_controller import TaskController
-from types_and_enums import TaskFunc, Pickable
-from gui_main import MainWindow
-from macro_worker import MacroWorker
-from variable_config import VariableConfig
+from .task_controller import TaskController
+from .types_and_enums import TaskFunc, Pickable
+from .gui_main import MainWindow
+from .macro_worker import MacroWorker
+from .variable_config import VariableConfig
 
 
 class MacroCreator:

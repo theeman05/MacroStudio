@@ -2,12 +2,12 @@ import inspect
 import time
 
 from PyQt6.QtCore import QMutex, QMutexLocker
-
-from types_and_enums import TaskFunc, MacroAbortException
 from typing import TYPE_CHECKING, Generator
 
+from .types_and_enums import TaskFunc, MacroAbortException
+
 if TYPE_CHECKING:
-    from macro_worker import MacroWorker
+    from .macro_worker import MacroWorker
 
 def _tryWrapFun(func):
     """If the function isn't a generator, wraps it into a generator function"""

@@ -39,7 +39,7 @@ The most efficient way to write tasks is using Python Generators. This allows th
 * **Key Rule:** Use `yield from macroSleep(seconds)` instead of `time.sleep()` in standard tasks.
 
 ```python
-from utils import macroSleep
+from macro_engine import macroSleep
 
 
 def my_task():
@@ -90,7 +90,7 @@ Sometimes you need to run blocking code (like heavy calculations or network requ
 
 ```python
 import threading
-from utils import macroSleep
+from macro_engine import macroSleep
 
 # 1. Define the function to run in the thread
 def heavy_lifting(controller):
@@ -124,7 +124,7 @@ class ThreadMacro:
 Launch the GUI. Your tasks and variables will automatically appear.
 
 ```python
-from engine import MacroCreator
+from macro_engine import MacroCreator
 from Examples.basic_macro import BasicMacro
 
 if __name__ == "__main__":

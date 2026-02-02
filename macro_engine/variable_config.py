@@ -1,5 +1,5 @@
 from PyQt6.QtCore import QPoint, QRect
-from types_and_enums import Pickable, ValueFormatter, CaptureMode, PICKABLE_TYPES
+from .types_and_enums import Pickable, CaptureMode, PICKABLE_TYPES
 
 
 def _parseQTVariant(text: str, target_type):

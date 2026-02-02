@@ -3,7 +3,7 @@ from PyQt6.QtCore import QThread, QMutex, QMutexLocker, pyqtSignal
 from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
-    from task_controller import TaskController
+    from .task_controller import TaskController
 
 class MacroWorker(QThread):
     finished_signal = pyqtSignal()

@@ -1,6 +1,5 @@
 from enum import Enum
 from typing import TypeAlias, Callable, Generator, get_args
-
 from PyQt6.QtCore import QRect, QPoint
 
 
