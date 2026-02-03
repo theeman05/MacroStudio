@@ -1,4 +1,4 @@
-import sys, time
+import sys
 from typing import Hashable, List, Dict
 from .task_controller import TaskController
 from .types_and_enums import TaskFunc, Pickable
@@ -67,7 +67,7 @@ class MacroCreator:
                 self.resumeMacroExecution()
             return
 
-        self._worker.paused_at = 0
+        self._worker.pause_state.clear()
         self._worker.running = True
         self._worker.reloadControllers(self._task_controllers)
         self.ui.startMacroVisuals()
@@ -81,21 +81,34 @@ class MacroCreator:
         self._worker.stop()
         self.ui.stopMacroVisuals()
 
-    def pauseMacroExecution(self):
-        if self.isRunningMacros() and not self._worker.paused_at:
-            self._worker.pause()
+    def pauseMacroExecution(self, hard: bool=True):
+        """
+        If the engine was running, pauses macro execution.
+        :param hard: If True, will trigger finally clauses, likely discarding remaining task wait time
+        """
+        if self.isRunningMacros() and not self._worker.isPaused():
+            self._worker.pause(hard)
             self.ui.pauseMacroVisuals()
             self.ui.log("Paused Execution")
 
     def isPaused(self):
-        return self._worker.paused_at
+        return self._worker.isPaused()
+
+    def isHardPaused(self):
+        """:return: Whether the current pause state is hard or not."""
+        return self._worker.pause_state.is_hard
 
     def resumeMacroExecution(self):
-        paused_at = self._worker.paused_at
-        if self.isRunningMacros() and self._worker.paused_at:
-            self.ui.log(f"Resumed Execution After {time.time() - paused_at} Seconds.")
-            self._worker.resume()
+        """
+        If previously paused, resumes macro execution
+        :return: The duration paused for in seconds or None if not paused.
+        """
+        elapsed = self._worker.resume() if self.isRunningMacros() else None
+        if elapsed is not None:
+            self.ui.log(f"Resumed Execution After {elapsed} Seconds.")
             self.ui.resumeMacroVisuals()
+
+        return elapsed
 
     def launch(self):
         self.ui.show()

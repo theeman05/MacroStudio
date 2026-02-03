@@ -4,7 +4,8 @@ import time
 from PyQt6.QtCore import QMutex, QMutexLocker
 from typing import TYPE_CHECKING, Generator
 
-from .types_and_enums import TaskFunc, MacroAbortException
+from .pause_state import PauseState
+from .types_and_enums import TaskFunc, MacroAbortException, MacroHardPauseException
 
 if TYPE_CHECKING:
     from .macro_worker import MacroWorker
@@ -20,42 +21,50 @@ def _tryWrapFun(func):
 class TaskController:
     def __init__(self, scheduler: "MacroWorker", task_func: TaskFunc, task_id: int):
         self.func = task_func
+        self.pause_state = PauseState()
+        self.wake_time = 0
 
         self._mutex = QMutex()
         self._scheduler = scheduler
         self._id = task_id
         self._generator: Generator | None = None
-        self.paused_at = self.wake_time = 0
         self._generation = 0
 
-    def pause(self):
-        """Halts the task from running its next step. Execution continues until task finishes."""
-        if not self.paused_at:
-            self.paused_at = time.time()
+    def pause(self, hard=False):
+        """
+        If not paused already, halts the task from running its next step.
+        :param hard: If True, will trigger finally clauses, likely discarding remaining task wait time
+        """
+        if not self.pause_state.active:
+            self.pause_state.trigger(hard)
 
     def _incGen(self):
         with QMutexLocker(self._mutex):
             self._generation += 1
 
     def resume(self):
-        """Allows the task to continue from where it left off. If the task finished already, does nothing."""
-        paused_at = self.paused_at
-        if paused_at:
-            self.paused_at = 0
-            prev_wake = self.wake_time
+        """
+        If the engine is running and previously paused, resumes from where it left off.
+        If the task finished already, does nothing.
+        :return: The duration paused for in seconds or None if not paused.
+        """
+        elapsed = self.pause_state.clear() if self._scheduler.isRunning() else None
+        if elapsed is not None:
             # Increase version to discard previously scheduled generator
             self._incGen()
             # Set the wake time to be how much time was elapsed previously
-            new_wake = max(time.time() + prev_wake - paused_at, 0)
+            new_wake = time.perf_counter() + elapsed
             self.wake_time = new_wake
             # Reschedule this controller to wake when it is supposed to
             self._scheduler.scheduleController(self, *self.getCompareVariables())
 
+        return elapsed
+
     def resetGenerator(self, create_new: bool=True):
-        """Creates a new generator (if create_new is true) and destroys the old one"""
+        """Creates a new generator (if create_new is true) and destroys the old one, also resets pause state."""
         generator = self._generator
         self._incGen()
-        self.paused_at = 0
+        self.pause_state.clear()
         self.wake_time = 0
         self._generator = create_new and _tryWrapFun(self.func) or None
         if generator:
@@ -73,7 +82,12 @@ class TaskController:
         self._scheduler.scheduleController(self, *self.getCompareVariables())
 
     def isPaused(self):
-        return self.paused_at or self._scheduler.paused_at
+        """:return: Whether the controller is paused."""
+        return self.pause_state.active
+
+    def isRunning(self):
+        """Returns if this controller is running currently, or not. If it is paused, it will still be considered as running."""
+        return self._generator is not None
 
     def getGeneration(self):
         """Atomic way to get the current generation"""
@@ -89,25 +103,62 @@ class TaskController:
         """
         Blocks the current thread with high precision.
         :param duration: Duration to sleep the thread for in seconds.
-        :raise MacroAbortException: If creator or this controller is paused.
+        :raise MacroAbortException: If stopped.
+        :raise MacroHardPauseException: If hard-paused (triggers finally).
         """
+        if duration <= 0:
+            return
+
         start_time = time.perf_counter()
         target_time = start_time + duration
 
         while True:
+            # Check for "Hard Pause" (Stop with Cleanup)
+            if self.pause_state.is_hard or self._scheduler.pause_state.is_hard:
+                raise MacroHardPauseException("Hard Pause triggered")
+
+            if not self.isRunning():
+                raise MacroAbortException("Task stopped.")
+
+            # Check for "Soft Pause" (Resumable)
+            if self.isPaused() or self._scheduler.isPaused():
+                # FREEZE TIME: Calculate how much time was left
+                remaining_at_pause = target_time - time.perf_counter()
+
+                # Enter a low-resource loop while waiting for resume
+                self._wait_while_paused()
+
+                # RESUME TIME: We are back! Reset target based on NEW current time
+                # We add the saved 'remaining' time to right now.
+                target_time = time.perf_counter() + remaining_at_pause
+
+                # Restart the loop to re-check status immediately
+                continue
+
             current_time = time.perf_counter()
             remaining = target_time - current_time
 
+            # If time is up, we are done
             if remaining <= 0:
                 break
 
-            if not self._scheduler.isRunning() or self.isPaused():
-                raise MacroAbortException()
-
-            # Leave a buffer because Windows sleep is inaccurate.
-            # If remaining is lower than 20ms, spins the CPU for the final few milliseconds to be more accurate.
+            # Smart Sleep Logic
             if remaining > 0.02:
-                time.sleep(0.01)
+                # Sleep small chunks so we can react to Pause/Stop signals quickly
+                # Sleeping the full 'remaining' would make the method less accurate
+                time.sleep(min(remaining - 0.005, 0.1))
+            else:
+                # Spin-wait for the final millisecond precision
+                pass
+
+    def _wait_while_paused(self):
+        """Internal helper to loop while paused."""
+        while self.isPaused() or self._scheduler.isPaused():
+            # Check for Hard Pause/Stop inside the pause loop so we don't get stuck
+            if not self.isRunning() or self.pause_state.is_hard or self._scheduler.pause_state.is_hard:
+                return  # Break out so the main sleep loop can handle the Exception raise
+
+            time.sleep(0.1)  # Low CPU usage wait
 
     def __iter__(self):
         return self

@@ -6,7 +6,7 @@ from macro_creator import MacroCreator, TaskController, macroSleep
 def threadTask(controller: TaskController):
     print("Wow, I am running in a separate thread!")
     controller.sleep(5)
-    print("The thread has woken back up ;)")
+    print("The thread has woken back up and is finished ;)")
 
 class ThreadMacro:
     def __init__(self, creator: MacroCreator):
@@ -17,7 +17,7 @@ class ThreadMacro:
 
     def threader(self):
         # Create and start thread task with the argument being the task controller
-        t = threading.Thread(target=threadTask, args=self.thread_task_controller, daemon=True)
+        t = threading.Thread(target=threadTask, args=(self.thread_task_controller,), daemon=True)
         t.start()
 
         # Let the engine know we have a task running still while the thread is still running

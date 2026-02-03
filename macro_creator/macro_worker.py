@@ -2,6 +2,8 @@ import time, heapq
 from PyQt6.QtCore import QThread, QMutex, QMutexLocker, pyqtSignal
 from typing import TYPE_CHECKING, List
 
+from .pause_state import PauseState
+
 if TYPE_CHECKING:
     from .task_controller import TaskController
 
@@ -10,7 +12,7 @@ class MacroWorker(QThread):
 
     def __init__(self):
         super().__init__()
-        self.paused_at = 0
+        self.pause_state = PauseState()
         self.running = False
 
         self._mutex = QMutex()
@@ -44,16 +46,16 @@ class MacroWorker(QThread):
 
     def run(self):
         completed = False
-        while self.running and not self.paused_at:
+        while self.running and not self.isPaused():
             should_sleep = True
             delay_ms = 10
 
             with QMutexLocker(self._mutex):
-                if not self.running or self.paused_at:
+                if not self.running or self.isPaused():
                     return
                 task_heap = self._task_heap
                 if task_heap:
-                    current_time = time.time()
+                    current_time = time.perf_counter()
                     wake_time, cid, prev_gen, controller = task_heap[0]
                     gens_differ = prev_gen != controller.getGeneration()
                     if wake_time <= current_time or gens_differ:
@@ -90,14 +92,15 @@ class MacroWorker(QThread):
                 self.msleep(delay_ms)
 
     def resume(self):
-        prev_paused_at = self.paused_at
-        self.paused_at = 0
-        if prev_paused_at and self.running and not self.isRunning():
+        """
+        If the worker is running, attempts to resume the worker.
+        :return: The duration paused for in seconds or None if not paused.
+        """
+        elapsed = self.pause_state.clear() if (self.running and not self.isRunning()) else None
+        if elapsed is not None:
             with QMutexLocker(self._mutex):
                 prev_heap = self._task_heap
                 self._task_heap = []
-                cur_time = time.time()
-                elapsed = cur_time - prev_paused_at
                 for wake_time, cid, prev_gen, controller in prev_heap:
                     task_pause_time = controller.paused_at
                     # Add stuff to the wake and paused times so the tasks wake at the correct time.
@@ -110,16 +113,20 @@ class MacroWorker(QThread):
                     self._pushController(controller, wake_time, cid, prev_gen)
 
         self.start()
+        return elapsed
 
-    def pause(self):
-        if not self.paused_at:
-            self.paused_at = time.time()
+    def isPaused(self):
+        return self.pause_state.active
+
+    def pause(self, hard: bool=True):
+        if not self.isPaused():
+            self.pause_state.trigger(hard)
             # Wait for loop to exit
             self.wait()
 
     def stop(self):
         """Safe way to kill the loop"""
         self.running = False
-        self.paused_at = 0
+        self.pause_state.clear()
         self.wait()
         self.reloadControllers(None)

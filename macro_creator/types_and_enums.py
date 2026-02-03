@@ -8,10 +8,12 @@ class CaptureMode(Enum):
     REGION = "REGION"  # Drag selection
 
 class MacroAbortException(Exception):
-    """Exception raised when a macro is stopped by the user or system."""
-    def __init__(self, message="Macro execution was aborted"):
-        self.message = message
-        super().__init__(self.message)
+    """Raised when the macro is stopped normally."""
+    pass
+
+class MacroHardPauseException(Exception):
+    """Raised when the user triggers a hard stop/pause that requires cleanup."""
+    pass
 
 TaskFunc: TypeAlias = Callable[[], Generator | None]
 Pickable = CaptureMode | QRect | QPoint
