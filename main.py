@@ -1,4 +1,4 @@
-from macro_engine import MacroCreator
+from macro_creator import MacroCreator
 from Examples.basic_macro import BasicMacro
 
 if __name__ == "__main__":

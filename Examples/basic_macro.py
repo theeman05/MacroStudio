@@ -1,5 +1,5 @@
 import time
-from macro_engine import MacroCreator, macroSleep
+from macro_creator import MacroCreator, macroSleep
 
 
 def anotherTask():

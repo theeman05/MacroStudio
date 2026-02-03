@@ -1,5 +1,5 @@
 import threading
-from macro_engine import MacroCreator, TaskController, macroSleep
+from macro_creator import MacroCreator, TaskController, macroSleep
 
 
 # This is the task that will be in the thread
