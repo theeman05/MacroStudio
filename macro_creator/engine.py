@@ -71,25 +71,40 @@ class MacroCreator:
         self._worker.running = True
         self._worker.reloadControllers(self._task_controllers)
         self.ui.startMacroVisuals()
-        self.ui.log("Starting...")
+        self.ui.log("Starting Macro...")
         self._worker.start()
 
     def cancelMacroExecution(self, completed=False):
         """Cancel currently executing macros."""
         if not self.isRunningMacros(): return
-        self.ui.log("Cancelled Execution" if not completed else "Macro Completed Successfully")
+        self.ui.log("Globally Cancelled Execution" if not completed else "[SUCCESS] Macro Finished. All tasks completed successfully.")
         self._worker.stop()
         self.ui.stopMacroVisuals()
 
     def pauseMacroExecution(self, hard: bool=True):
         """
         If the engine was running, pauses macro execution.
-        :param hard: If True, will trigger finally clauses, likely discarding remaining task wait time
+        :param hard:
+            hard=True (default): Interrupts the task to release keys and clean up resources safely.
+            hard=False: Freezes the task in place (keys remain held down).
+        :return: True if paused successfully, false if the engine has stopped
         """
-        if self.isRunningMacros() and not self._worker.isPaused():
-            self._worker.pause(hard)
+        if not self._worker.running:
+            self.ui.log("[WARNING] Cannot pause: Worker is already stopped.")
+            self.ui.stopMacroVisuals()
+            return False
+
+        still_running = self._worker.pause(hard)
+        if still_running:
             self.ui.pauseMacroVisuals()
-            self.ui.log("Paused Execution")
+            if hard:
+                self.ui.log("Global Hard Pause active. Running tasks interrupted and cleaned up. (Current wait timers cancelled).")
+            else:
+                self.ui.log("Global Pause active")
+        else:
+            self.ui.stopMacroVisuals()
+            self.ui.log("[FAILURE] System terminated all active tasks during hard pause attempt.")
+        return still_running
 
     def isPaused(self):
         return self._worker.isPaused()

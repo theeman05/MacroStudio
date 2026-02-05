@@ -22,7 +22,7 @@ class TaskController:
     def __init__(self, scheduler: "MacroWorker", task_func: TaskFunc, task_id: int):
         self.func = task_func
         self.pause_state = PauseState()
-        self.wake_time = 0
+        self._wake_time = 0
 
         self._mutex = QMutex()
         self._scheduler = scheduler
@@ -30,56 +30,94 @@ class TaskController:
         self._generator: Generator | None = None
         self._generation = 0
 
+    @property
+    def wake_time(self):
+        with QMutexLocker(self._mutex):
+            return self._wake_time
+
+    @wake_time.setter
+    def wake_time(self, value):
+        with QMutexLocker(self._mutex):
+            self._wake_time = value
+
+    @property
+    def cid(self):
+        return self._id
+
     def pause(self, hard=False):
         """
         If not paused already, halts the task from running its next step.
-        :param hard: If True, will trigger finally clauses, likely discarding remaining task wait time
+        :param hard:
+            hard=True: Interrupts the task to release keys and clean up resources safely.
+            hard=False (default): Freezes the task in place (keys remain held down).
+        :return: True if paused successfully, false if the task has stopped
         """
         if not self.pause_state.active:
             self.pause_state.trigger(hard)
+            return not hard or self.throwHardPauseError()
+        return True
 
-    def _incGen(self):
+    def throwHardPauseError(self):
+        """
+        Safely attempts to throw a hard pause error onto the current generator.
+        :return: True if the task is now hard paused, False if it was stopped
+        """
         with QMutexLocker(self._mutex):
-            self._generation += 1
+            if not self._generator: return False
+            try:
+                self._generator.throw(MacroHardPauseException)
+            except (StopIteration, MacroHardPauseException):
+                # If there's nothing left in our generator, the task has been stopped; cleanup
+                self._generator = None
+                self.pause_state.clear()
+                return False
+
+        return True
+
+    def _unsafeGetSortKey(self):
+        return self._wake_time, self._id, self._generation
 
     def resume(self):
         """
-        If the engine is running and previously paused, resumes from where it left off.
+        If the engine is running and task was previously paused, resumes from where it left off.
         If the task finished already, does nothing.
         :return: The duration paused for in seconds or None if not paused.
         """
-        elapsed = self.pause_state.clear() if self._scheduler.isRunning() else None
+        was_hard_pause = self.pause_state.is_hard
+        elapsed = self.pause_state.clear() if self._scheduler.running else None
         if elapsed is not None:
             # Increase version to discard previously scheduled generator
-            self._incGen()
-            # Set the wake time to be how much time was elapsed previously
-            new_wake = time.perf_counter() + elapsed
-            self.wake_time = new_wake
-            # Reschedule this controller to wake when it is supposed to
-            self._scheduler.scheduleController(self, *self.getCompareVariables())
+            # If were hard paused, tries to wake generator immediately
+            with QMutexLocker(self._mutex):
+                self._generation += 1
+                self._wake_time = 0 if was_hard_pause else (self._wake_time + elapsed)
+                self._scheduler.moveToActiveAndReschedule(self, *self._unsafeGetSortKey())
 
         return elapsed
 
-    def resetGenerator(self, create_new: bool=True):
-        """Creates a new generator (if create_new is true) and destroys the old one, also resets pause state."""
-        generator = self._generator
-        self._incGen()
+    def resetGeneratorAndGetSorKey(self, create_new: bool=True):
+        """
+        Creates a new generator (if create_new is true) and destroys the old one, also resets pause state.
+        :return: The sort key
+        """
         self.pause_state.clear()
-        self.wake_time = 0
-        self._generator = create_new and _tryWrapFun(self.func) or None
-        if generator:
-            generator.close()
+        with QMutexLocker(self._mutex):
+            self._generation += 1
+            self._wake_time = 0
+            prev_gen = self._generator
+            self._generator = _tryWrapFun(self.func) if create_new else None
+            if prev_gen: prev_gen.close()
+            return self._unsafeGetSortKey()
 
     def stop(self):
         """
         Stops a task on its next cycle, allowing execution to finish.
         """
-        self.resetGenerator(False)
+        self.resetGeneratorAndGetSorKey(False)
 
     def restart(self):
-        """If running macros, kills the current instance of the task and starts a fresh one at the next cycle."""
-        self.resetGenerator()
-        self._scheduler.scheduleController(self, *self.getCompareVariables())
+        """Kills the current instance of the task and starts a fresh one at the next work cycle."""
+        self._scheduler.moveToActiveAndReschedule(self, *self.resetGeneratorAndGetSorKey())
 
     def isPaused(self):
         """:return: Whether the controller is paused."""
@@ -94,10 +132,22 @@ class TaskController:
         with QMutexLocker(self._mutex):
             return self._generation
 
-    def getCompareVariables(self):
+    def delayAndGetSortKey(self, delay: float=None):
+        """
+        Return the comparable variables and optionally delay the wake time.
+        If no delay is provided, resets the wake time to 0.
+        """
         with QMutexLocker(self._mutex):
-            generation = self._generation
-        return self.wake_time, self._id, generation
+            self._wake_time = 0 if delay is None else (self._wake_time + delay)
+            return self._wake_time, self._id, self._generation
+
+    def _waitWhileSoftPaused(self):
+        while self.isPaused() or self._scheduler.isPaused():
+            # Check for Hard Pause/Stop inside the pause loop so we don't get stuck
+            if not self.isRunning() or self.pause_state.is_hard or self._scheduler.pause_state.is_hard:
+                return  # Break out so the main sleep loop can handle the Exception raise
+
+            time.sleep(0.1)  # Low CPU usage wait
 
     def sleep(self, duration: float = .01):
         """
@@ -126,7 +176,7 @@ class TaskController:
                 remaining_at_pause = target_time - time.perf_counter()
 
                 # Enter a low-resource loop while waiting for resume
-                self._wait_while_paused()
+                self._waitWhileSoftPaused()
 
                 # RESUME TIME: We are back! Reset target based on NEW current time
                 # We add the saved 'remaining' time to right now.
@@ -151,14 +201,17 @@ class TaskController:
                 # Spin-wait for the final millisecond precision
                 pass
 
-    def _wait_while_paused(self):
-        """Internal helper to loop while paused."""
-        while self.isPaused() or self._scheduler.isPaused():
-            # Check for Hard Pause/Stop inside the pause loop so we don't get stuck
-            if not self.isRunning() or self.pause_state.is_hard or self._scheduler.pause_state.is_hard:
-                return  # Break out so the main sleep loop can handle the Exception raise
-
+    def waitForResume(self):
+        """
+        While paused, blocks the current thread and waits until the pause flag is cleared.
+        :raise MacroAbortException: If stopped.
+        """
+        while self.isRunning() and (self.isPaused() or self._scheduler.isPaused()):
             time.sleep(0.1)  # Low CPU usage wait
+
+        # If one of the two are no longer running, throw abort exception
+        if not (self._scheduler.isRunning() and self.isRunning()):
+            raise MacroAbortException("Worker stopped while waiting for resume.")
 
     def __iter__(self):
         return self
