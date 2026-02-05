@@ -1,6 +1,6 @@
 import inspect
 import time
-from PyQt6.QtCore import QMutex, QMutexLocker
+from PySide6.QtCore import QMutex, QMutexLocker
 from typing import TYPE_CHECKING, Generator
 
 from .pause_state import PauseState

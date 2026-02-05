@@ -1,6 +1,6 @@
-from PyQt6.QtWidgets import QWidget, QFrame, QHBoxLayout, QLabel, QPushButton
-from PyQt6.QtCore import Qt, QPoint, QRect
-from PyQt6.QtGui import QPainter, QPen, QColor, QKeyEvent
+from PySide6.QtWidgets import QWidget, QFrame, QHBoxLayout, QLabel, QPushButton
+from PySide6.QtCore import Qt, QPoint, QRect
+from PySide6.QtGui import QPainter, QPen, QColor, QKeyEvent
 from typing import TYPE_CHECKING
 from .types_and_enums import CaptureMode
 
