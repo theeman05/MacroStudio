@@ -1,6 +1,5 @@
 import inspect
 import time
-
 from PyQt6.QtCore import QMutex, QMutexLocker
 from typing import TYPE_CHECKING, Generator
 
@@ -54,7 +53,11 @@ class TaskController:
         """
         if not self.pause_state.active:
             self.pause_state.trigger(hard)
-            return not hard or self.throwHardPauseError()
+            if not hard or self.throwHardPauseError():
+                return True
+            self._scheduler.logControllerAborted(self)
+            return False
+
         return True
 
     def throwHardPauseError(self):
@@ -70,6 +73,7 @@ class TaskController:
                 # If there's nothing left in our generator, the task has been stopped; cleanup
                 self._generator = None
                 self.pause_state.clear()
+                self._generation += 1
                 return False
 
         return True

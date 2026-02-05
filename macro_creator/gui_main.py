@@ -8,12 +8,13 @@ from PyQt6.QtGui import QCloseEvent, QBrush, QColor
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QTimer, QRect
 from typing import Hashable
 from pynput import keyboard
+
 from .overlay import TransparentOverlay
 from .types_and_enums import Pickable, CaptureMode, PICKABLE_TYPES
 from .variable_config import VariableConfig
 
 # --- THEME & STYLING (QSS) ---
-# I'm NGL, I just used AI for this lmaooo
+# I'm NGL, I just used AI for this design lmaooo
 # This defines the "look and feel" - Dark Mode, Flat Design.
 DARK_THEME = """
 QMainWindow {

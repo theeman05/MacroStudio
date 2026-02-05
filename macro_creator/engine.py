@@ -1,5 +1,6 @@
 import sys
 from typing import Hashable, List, Dict
+
 from .task_controller import TaskController
 from .types_and_enums import TaskFunc, Pickable
 from .gui_main import MainWindow
@@ -24,6 +25,7 @@ class MacroCreator:
         self.ui.pause_signal.connect(self.pauseMacroExecution)
         self.ui.stop_signal.connect(self.cancelMacroExecution)
         self._worker.finished_signal.connect(lambda: self.cancelMacroExecution(True))
+        self._worker.log_signal.connect(lambda text: self.ui.log(text))
 
     def addVariable(self, key: Hashable, data_type: Pickable | type, default_val: object=None, pick_hint: str=None):
         """
@@ -77,7 +79,7 @@ class MacroCreator:
     def cancelMacroExecution(self, completed=False):
         """Cancel currently executing macros."""
         if not self.isRunningMacros(): return
-        self.ui.log("Globally Cancelled Execution" if not completed else "[SUCCESS] Macro Finished. All tasks completed successfully.")
+        self.ui.log("Globally Cancelled Execution" if not completed else "[SUCCESS] Macro Finished. All tasks completed.")
         self._worker.stop()
         self.ui.stopMacroVisuals()
 
@@ -103,7 +105,6 @@ class MacroCreator:
                 self.ui.log("Global Pause active")
         else:
             self.ui.stopMacroVisuals()
-            self.ui.log("[FAILURE] System terminated all active tasks during hard pause attempt.")
         return still_running
 
     def isPaused(self):

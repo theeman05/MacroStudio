@@ -13,13 +13,16 @@ def _handleTasksOnHard(controller: "TaskController", notified_tasks: set):
     Handles any tasks that have not been notified of a hard pause yet.
     :return: True if the task is now hard paused, False otherwise
     """
-    if not (controller.pause_state.is_hard or controller in notified_tasks):
-        notified_tasks.add(controller)
-        return controller.throwHardPauseError()
+    was_in_notified = controller in notified_tasks
+    notified_tasks.add(controller)
+    if not controller.pause_state.is_hard:
+        # Throw if not in notified already
+        return was_in_notified or controller.throwHardPauseError()
     return False
 
 class MacroWorker(QThread):
     finished_signal = pyqtSignal()
+    log_signal = pyqtSignal(str) # The message
 
     def __init__(self):
         super().__init__()
@@ -77,7 +80,7 @@ class MacroWorker(QThread):
             # If our pause state is hard before stopping, we need to send our exception to all
             # tasks that were going to run, or aren't hard paused already.
             notified_tasks = set()
-
+            forcefully_stopped = set()
             with QMutexLocker(self._mutex):
                 # Snapshot the collections to protect if a task removes itself from the list/set during the 'throw'
                 active_snapshot = list(self._task_heap)
@@ -90,15 +93,24 @@ class MacroWorker(QThread):
                     # Only add to paused when hard pausing successful
                     if _handleTasksOnHard(controller, notified_tasks):
                         self._paused_tasks.add(controller)
+                    else:
+                        forcefully_stopped.add(controller)
 
                 if not self._paused_tasks:
                     # All tasks must have been stopped when hard stopping, reset state
                     self.running = False
                     self.pause_state.clear()
-                    return
 
-            for controller in paused_snapshot:
-                _handleTasksOnHard(controller, notified_tasks)
+            if self.running:
+                # Handle previously paused tasks
+                for controller in paused_snapshot:
+                    _handleTasksOnHard(controller, notified_tasks)
+
+                # Log any forcefully stopped tasks
+                for controller in forcefully_stopped:
+                    self.logControllerAborted(controller)
+            else:
+                self.log_signal.emit("[FAILURE] System terminated all active tasks during hard pause.")
 
     def run(self):
         completed = False
@@ -149,9 +161,11 @@ class MacroWorker(QThread):
                     with QMutexLocker(self._mutex):
                         self._unsafePushController(controller, wake_time=new_wake_time, cid=cid, generation=generation)
                 except StopIteration:
+                    # Controller stopped successfully
                     controller.stop()
+                    self.log_signal.emit(f"[DONE] Task {controller.cid} finished.")
                 except Exception as e:
-                    print(f"Error: {e}")
+                    print(f"Error when executing task: {e}")
                     controller.stop()
             else:
                 self.msleep(delay_ms)
@@ -205,3 +219,6 @@ class MacroWorker(QThread):
         self.pause_state.clear()
         self.wait()
         self.reloadControllers(None)
+
+    def logControllerAborted(self, controller):
+        self.log_signal.emit(f"[STOPPED] Task {controller.cid} aborted via unhandled Hard Stop.")

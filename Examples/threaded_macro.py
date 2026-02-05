@@ -1,8 +1,5 @@
-import threading
 import time
-
-from macro_creator import (MacroCreator, TaskController, MacroAbortException, MacroHardPauseException,
-                           macroRunTaskInThread, macroSleep)
+from macro_creator import MacroCreator, MacroAbortException, MacroHardPauseException, macroRunTaskInThread, macroSleep
 
 class ThreadMacro:
     def __init__(self, creator: MacroCreator):
