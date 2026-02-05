@@ -1,4 +1,4 @@
-import cv2, pytesseract, mss, pydirectinput
+import cv2, pytesseract, mss, pydirectinput, threading
 import numpy as np
 from contextlib import contextmanager
 from PyQt6.QtCore import QRect, QPoint
@@ -99,3 +99,45 @@ def macroMouseClick(coords: QPoint=None, button: str=MOUSE_PRIMARY):
             yield from macroSleep(.1)
     except MacroHardPauseException:
         yield from macroWaitForResume()
+
+
+def macroRunTaskInThread(target_func, *args, **kwargs):
+    """
+    Runs a function in a separate thread while keeping the generator alive to handle Engine pauses and Stops.
+
+    Usage in task: yield from macroRunTaskInThread(target_func).
+    :param target_func: The function to run.
+    :param args: Arguments to pass to the function.
+    """
+    # Capture Thread Exceptions so they don't fail silently
+    thread_exception = []
+
+    def thread_wrapper():
+        try:
+            target_func(*args, **kwargs)
+        except Exception as e:
+            thread_exception.append(e)
+
+    # Start the Thread
+    t = threading.Thread(target=thread_wrapper, daemon=True)
+    t.start()
+
+    # Poll the thread state frequently so the UI feels responsive.
+    while t.is_alive():
+        # Check if the thread crashed
+        if thread_exception:
+            raise thread_exception[0]  # Re-raise in the main engine!
+
+        try:
+            # Short sleep to yield control back to the engine scheduler
+            yield from macroSleep(0.05)
+
+        except MacroHardPauseException:
+            # The Engine is Hard Paused.
+            # The THREAD should handle its own pausing via controller.sleep(),
+            # but WE (the monitor) must sit here and wait for the resume signal.
+            yield from macroWaitForResume()
+
+    # Final Error Check (in case it crashed right at the end)
+    if thread_exception:
+        raise thread_exception[0]

@@ -1,8 +1,8 @@
 import threading
 import time
 
-from macro_creator import MacroCreator, TaskController, MacroAbortException, MacroHardPauseException, macroSleep, \
-    macroWaitForResume
+from macro_creator import (MacroCreator, TaskController, MacroAbortException, MacroHardPauseException,
+                           macroRunTaskInThread, macroSleep)
 
 class ThreadMacro:
     def __init__(self, creator: MacroCreator):
@@ -12,13 +12,13 @@ class ThreadMacro:
         self.thread_task_controller = creator.addRunTask(self.threadedTask)
         creator.addRunTask(self.threadHardPauser)
 
-    def _taskInThread(self, controller: TaskController):
+    def _taskInThread(self):
         """
         A simple example of a task running in its own thread.
         It demonstrates how to handle 'Hard Pauses' (Safety Stops) and Aborts correctly without crashing.
         """
         try:
-            self.engine.ui.log(f"[Thread] Task Started. ID: {controller.cid}")
+            controller = self.thread_task_controller
 
             # We want to sleep for exactly 5 seconds
             # We calculate the target end time immediately
@@ -28,14 +28,14 @@ class ThreadMacro:
             self.engine.ui.log(f"[Thread] Attempting to sleep for {target_duration} seconds...")
             try:
                 # Access resources here if needed
-                self.engine.ui.log(f"[Thread] Accessing resources")
+                self.engine.ui.log(f"[Thread] Accessing resources...")
                 # Sleep the thread for the target duration
                 controller.sleep(target_duration)
             except MacroHardPauseException:
                 self.engine.ui.log("[Thread] PAUSED!")
             finally:
                 # Always clean up resources here if needed
-                self.engine.ui.log("[Thread] Cleaning up resources")
+                self.engine.ui.log("[Thread] Cleaning up resources...")
 
             # We could be paused after breaking out of the previous block, so wait until we're resumed
             controller.waitForResume()
@@ -48,16 +48,10 @@ class ThreadMacro:
 
     def threadedTask(self):
         # Create and start thread task with the argument being the task controller
-        t = threading.Thread(target=self._taskInThread, args=(self.thread_task_controller,), daemon=True)
-        t.start()
+        self.engine.ui.log("Starting background work...")
 
-        # Keep this task alive while our thread is alive
-        while t.is_alive():
-            try:
-                yield from macroSleep(1)
-            except MacroHardPauseException:
-                # If we want to continue monitoring the thread, wait for the controller to be resumed
-                yield from macroWaitForResume()
+        # Yield while the thread task is running
+        yield from macroRunTaskInThread(self._taskInThread)
 
     def threadHardPauser(self):
         # Let's attempt to hard pause the threaded task!
