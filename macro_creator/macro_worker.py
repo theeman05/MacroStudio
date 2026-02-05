@@ -1,5 +1,5 @@
 import time, heapq
-from PyQt6.QtCore import QThread, QMutex, QMutexLocker, pyqtSignal
+from PySide6.QtCore import QThread, QMutex, QMutexLocker, Signal
 from typing import TYPE_CHECKING, List
 
 from .pause_state import PauseState
@@ -21,8 +21,8 @@ def _handleTasksOnHard(controller: "TaskController", notified_tasks: set):
     return False
 
 class MacroWorker(QThread):
-    finished_signal = pyqtSignal()
-    log_signal = pyqtSignal(str) # The message
+    finished_signal = Signal()
+    log_signal = Signal(str) # The message
 
     def __init__(self):
         super().__init__()

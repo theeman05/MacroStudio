@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QPoint, QRect
+from PySide6.QtCore import QPoint, QRect
 from .types_and_enums import Pickable, CaptureMode, PICKABLE_TYPES
 
 

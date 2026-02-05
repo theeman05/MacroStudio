@@ -1,7 +1,7 @@
 import cv2, pytesseract, mss, pydirectinput, threading
 import numpy as np
 from contextlib import contextmanager
-from PyQt6.QtCore import QRect, QPoint
+from PySide6.QtCore import QRect, QPoint
 from PIL import Image
 from pydirectinput import MOUSE_PRIMARY
 

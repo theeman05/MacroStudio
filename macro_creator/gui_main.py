@@ -1,11 +1,11 @@
 import sys
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QTableWidget, QTableWidgetItem, QHeaderView,
     QFrame, QTextEdit, QSplitter, QProgressBar, QStatusBar, QMenu
 )
-from PyQt6.QtGui import QCloseEvent, QBrush, QColor
-from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QTimer, QRect
+from PySide6.QtGui import QCloseEvent, QBrush, QColor
+from PySide6.QtCore import Qt, Signal, QPoint, QTimer, QRect
 from typing import Hashable
 from pynput import keyboard
 
@@ -188,10 +188,10 @@ def _getReadableTypeName(data_type):
 
 class MainWindow(QMainWindow):
     # Signals to talk to your Engine
-    start_signal = pyqtSignal()
-    stop_signal = pyqtSignal()
-    pause_signal = pyqtSignal()
-    hotkey_signal = pyqtSignal(str)
+    start_signal = Signal()
+    stop_signal = Signal()
+    pause_signal = Signal()
+    hotkey_signal = Signal(str)
 
     def __init__(self):
         self.app = QApplication(sys.argv)
