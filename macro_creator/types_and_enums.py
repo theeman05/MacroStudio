@@ -1,12 +1,21 @@
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import TypeAlias, Callable, Generator, Tuple, get_args
-from PySide6.QtCore import QRect, QPoint
+from typing import TYPE_CHECKING, TypeAlias, Callable, Generator, Tuple
 
+if TYPE_CHECKING:
+    from .gui_main import MainWindow
+    from .variable_config import VariableConfig
 
 class CaptureMode(Enum):
     POINT = auto()      # Single click
     REGION = auto()  # Drag selection
+
+@dataclass(frozen=True)
+class CaptureTypeDef:
+    mode: CaptureMode
+    type_class: type
+    tip: str
+    capture_handler: Callable[["MainWindow", "VariableConfig"], None]
 
 class LogLevel(Enum):
     ERROR = auto()
@@ -34,6 +43,3 @@ class MacroHardPauseException(Exception):
     pass
 
 TaskFunc: TypeAlias = Callable[..., Generator | None]
-Pickable = CaptureMode | QRect | QPoint
-
-PICKABLE_TYPES = get_args(Pickable)

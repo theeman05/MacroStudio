@@ -7,7 +7,7 @@ from PySide6.QtCore import QRect, QPoint
 BASIC_TYPES = (int, float, str, bool, type(None))
 
 # Basic types that we didn't register
-DEFAULT_TYPE_NAMES = {
+DEFAULT_TYPE_CLASS_NAMES = {
     int: "Integer",
     str: "Text",
     float: "Decimal"
@@ -24,9 +24,13 @@ class GlobalTypeHandler:
     Central registry for converting objects into human-readable strings/HTML.
     """
     _registry: Dict[Type, RegistryItem] = {}
+    _type_names_map: Dict[str, Type] = {
+        "int": int,
+        "float": float,
+    }
 
     @classmethod
-    def register(cls, target_type: Type, formatter: Callable[[Any], str]=None, parser: Callable[[str], Any]=None,
+    def register(cls, target_type, formatter: Callable[[Any], str]=None, parser: Callable[[str], Any]=None,
                  display_name: str=None):
         """
         Registers support for a custom type.
@@ -37,16 +41,17 @@ class GlobalTypeHandler:
             display_name: A pretty name to display the type as, like "Region" or "Whole Number"
         """
         reg_item = cls._registry.setdefault(target_type, RegistryItem())
+        cls._type_names_map[target_type.__name__] = target_type
 
         if formatter: reg_item.formatter = formatter
         if parser: reg_item.parser = parser
         if display_name: reg_item.display_name = display_name
 
     @classmethod
-    def format(cls, obj: Any) -> str:
+    def toString(cls, obj: Any) -> str:
         """Converts any object to a string using the best registered formatter."""
         if obj is None:
-            return "None"
+            return ""
 
         # Exact Match (Fastest)
         if (reg_item := cls._registry.get(type(obj))) and reg_item.formatter:
@@ -62,13 +67,13 @@ class GlobalTypeHandler:
             if isinstance(obj, registered_type) and reg_item.formatter:
                 return reg_item.formatter(obj)
 
-        # Fallback
+        # Fallback to str if unregistered type
         return str(obj)
 
     @classmethod
-    def parse(cls, target_type, val_str: str):
+    def fromString(cls, target_type, val_str: str):
         """
-        Returns the parsed value.
+        Converts the value from a string to the target type.
         Raises:
             ValueError/TypeError: if failed.
         """
@@ -86,13 +91,23 @@ class GlobalTypeHandler:
             return reg_item.display_name
 
         # Basic types that we don't have anything for
-        if target_type in DEFAULT_TYPE_NAMES:
-            return DEFAULT_TYPE_NAMES[target_type]
+        if target_type in DEFAULT_TYPE_CLASS_NAMES:
+            return DEFAULT_TYPE_CLASS_NAMES[target_type]
 
         if hasattr(target_type, '__name__'):
             return target_type.__name__.capitalize()
 
         return str(target_type)
+
+    @classmethod
+    def getTypeClass(cls, type_name: str):
+        """Returns the type class for the name string if the type is registered"""
+        if type_name in cls._type_names_map:
+            return cls._type_names_map.get(type_name)
+
+        # Fallback to str if unregistered type
+        return str
+
 
 # --- Helper Decorator for easy registration ---
 def _registerClass(cls, target_type = None):
@@ -138,14 +153,14 @@ class QRectHandler:
 
     @staticmethod
     def toString(obj: QRect):
-        return f"{obj.x()},{obj.y()},{obj.width()},{obj.height()}"
+        return f"{obj.x()}, {obj.y()}, {obj.width()}, {obj.height()}"
 
     @staticmethod
     def fromString(text: str):
         parts = [p.strip() for p in text.split(',') if p.strip()]
 
         if len(parts) != 4:
-            raise ValueError(f"QRect requires 4 integers (x,y,w,h). Found {len(parts)}.")
+            raise ValueError(f"QRect requires 4 integers (x, y, w, h). Found {len(parts)}.")
 
         try:
             vals = [int(p) for p in parts]
@@ -188,7 +203,7 @@ class BooleanHandler:
 class ListHandler:
     @staticmethod
     def toString(val: list):
-        return str([GlobalTypeHandler.format(item) for item in val])
+        return str([GlobalTypeHandler.toString(item) for item in val])
 
     @staticmethod
     def fromString(text: str):
@@ -219,7 +234,7 @@ class ListHandler:
 class TupleHandler:
     @staticmethod
     def toString(val: tuple):
-        return str(tuple(GlobalTypeHandler.format(item) for item in val))
+        return str(tuple(GlobalTypeHandler.toString(item) for item in val))
 
     @staticmethod
     def fromString(text: str):
