@@ -18,10 +18,18 @@ The core of the engine is its **Task Manager**. Unlike standard scripts that run
 * **Resilient:** If one task crashes or is stopped, the rest of the engine keeps running.
 
 ### 🧩 Variable Management
-Predefine variables (Integers, Booleans, Regions, Points) that are exposed in the GUI. Users can tweak settings (like `click_point` or `scan_region`) safely via the interface without ever touching the code.
+Predefine variables (Integers, Booleans, Regions, Points, etc.) that are exposed in the GUI. Users can tweak settings (like `click_point` or `scan_region`) safely via the interface without ever touching the code.
 
 ### ⚡ Smart Config
 Variables are type-safe and validated instantly. As of right now, the engine supports complex types like `QRect` (Regions) and `QPoint` (Coordinates) with visual overlays, ensuring users don't have to guess pixel coordinates (but they still can if they want to)!
+
+### 🧬 Extensible Type System
+
+The Engine features a robust **Global Type Registry** that bridges the gap between Python objects and the User Interface. You don't need to manually build widgets for your settings; simply defining a type handler automatically grants you:
+
+* **Smart UI Handling:** Users see friendly names (e.g., "Screen Region") instead of raw class names (e.g., `PySide6.QtCore.QRect`).
+* **Input Validation:** The UI provides immediate visual feedback (red borders/tooltips) if user input doesn't match your parser's rules.
+* **Automatic Serialization:** The engine knows how to save and load your object from config files. **COMING SOON**
 
 ---
 
@@ -71,9 +79,9 @@ When you add a task, the engine returns a **Controller**. You can use this objec
         macro_creator.addVariable("Sleep My Task", bool, True, "Sleeps My Task On Execute")
         macro_creator.addRunTask(self.manager_task)
 
-    def manager_task(self):
+    def manager_task(self, controller):
         # Log directly to the ui
-        self.engine.ui.log("I am going to sleep")
+        controller.log("I am going to sleep")
         # Get a user defined variable from the engine
         if self.engine.getVar("Sleep My Task"):
             self.worker_ctrl.pause() # Worker stops immediately
@@ -90,34 +98,28 @@ Sometimes you need to run blocking code (like heavy calculations or network requ
 
 ```python
 import threading
-from macro_creator import macroSleep
+from macro_creator import macroSleep, macroRunTaskInThread
 
 
 # 1. Define the function to run in the thread
 def heavy_lifting(controller):
     print("Running in a separate thread!")
-
     # SAFE SLEEP: Checks if the user paused the engine while sleeping
     controller.sleep(5)
-
     print("Thread finished work.")
 
+def launcher(controller):
+    # Create and start thread task with the argument being the task controller
+    controller.log("Starting background work...")
+    # Yield while the thread task is running
+    yield from macroRunTaskInThread(heavy_lifting, controller=controller)
 
 class ThreadMacro:
     def __init__(self, macro_creator):
         # 2. Add a task that spawns the thread
         # We pass 'self.launcher' so we can get its controller
         self.engine = macro_creator
-        self.controller = macro_creator.addRunTask(self.launcher)
-
-    def launcher(self):
-        # 3. Start thread and pass the controller to it
-        t = threading.Thread(target=heavy_lifting, args=(self.controller,), daemon=True)
-        t.start()
-
-        # Let the engine know we have a task running still while the thread is still running
-        while self.engine.isRunningMacros() and t.is_alive():
-            yield from macroSleep(1)
+        self.controller = macro_creator.addRunTask(launcher)
 
 ```
 
@@ -148,18 +150,172 @@ if __name__ == "__main__":
 * **Generator Tasks:** Use **Cooperative Multitasking**. The engine cycles through tasks, running them until they `yield`. This makes the bot extremely lightweight and CPU efficient.
 * **Threaded Tasks:** Run in parallel. By using `controller.sleep()`, you bridge the gap, allowing the main engine to safely pause or stop these threads even though they are running outside the main loop.
 
+Here is a "Feature Highlight" block for your documentation. You can place this under your **Key Features** or **Developer API** section.
+
+It highlights the system's ability to seamlessly bridge raw Python code with a user-friendly GUI.
+
+---
+
+### ⚠️ Critical Rule: Handling Hard Pauses When Sleeping Tasks
+
+**Rule:** When a task yields time back to the engine, you **must** wrap your sleep calls in a `try/except` block to handle `MacroHardPauseException`.
+
+**Reason:** The Engine uses `MacroHardPauseException` to interrupt execution immediately when a controller or the engine is hard paused.
+
+* **If you catch it:** Your code pauses, waits to resume, and then continues like normal.
+* **If you DO NOT catch it:** The exception bubbles up, **returning immediately**. Your task will mistakenly treat a "Pause" as a "Stop/Cancel" and exit the loop prematurely.
+
+#### ❌ Incorrect Implementation (Broken on Hard Pause)
+
+In this example, if the task is Hard Paused, the loop crashes, and the code after will not run.
+
+```python
+counter = 0
+while counter < 10:
+    # DANGER: If the task is Hard Paused, this line raises MacroHardPauseException.
+    # Since it isn't caught, it exits the 'while' loop immediately!
+    yield from macroSleep(1)
+    counter += 1
+    
+print("Task finished!") # <--- This will not run on resuming (Wrong!)
+
+```
+
+#### ✅ Correct Implementation (Resumable)
+
+You must catch the exception and delegate control to `macroWaitForResume()`.
+
+```python
+counter = 0
+while counter < 10:
+    try:
+        # Try to sleep normally
+        yield from macroSleep(1) 
+        
+    except MacroHardPauseException:
+        # CAUGHT: User paused. Wait here until they click Resume.
+        # When this returns, execution loops back naturally.
+        yield from macroWaitForResume()
+    counter += 1
+
+print("Thread finished!") # <--- Only runs when thread is ACTUALLY done.
+
+```
+
+### ⚠️ Critical Rule: Handling Stops (`MacroAbortException`)
+
+**Rule:** Calls to `controller.sleep`, `waitForResume`, or any blocking method will raise `MacroAbortException` if the task is stopped while waiting. You **must not catch and ignore** this exception. Instead, use a `try/finally` block to ensure resources (files, connections, etc.) are closed properly when the task is terminated.
+
+**Reason:** The engine uses this exception to immediately halt execution. Swallowing this exception (catching it without re-raising or returning) will cause your thread to keep running as a "phantom process" even after the user has clicked Stop.
+
+**Note:** `MacroAbortException` abort exception does not apply to non-threaded tasks using `macroSleep()` or `macroWaitForResume()`. However, they should still follow this rule to ensure resources (files, connections, etc.) are closed properly when the task is terminated.
+
+#### ❌ Incorrect Implementation (The Phantom Thread)
+
+In this example, the user catches `Exception` (which includes `MacroAbortException`), logs it, and **continues the loop**. The thread refuses to die.
+
+```python
+# Bad Pattern: Swallowing the Stop signal
+f = open("log.txt", "w")
+
+while True:
+    try:
+        # If user clicks STOP, this raises MacroAbortException
+        controller.sleep(1)
+        do_work()
+        
+    except Exception as e:
+        # DANGER: This catches MacroAbortException too!
+        # The code logs the error but the loop keeps spinning.
+        print(f"Error occurred: {e}")
+
+# This line is never reached if the loop doesn't break
+f.close() 
+
+```
+
+#### ✅ Correct Implementation (The `finally` Pattern)
+
+Use `finally` to guarantee cleanup. You do not need to explicitly catch `MacroAbortException` because you *want* it to propagate up and stop the thread.
+
+```python
+# Good Pattern: Resource safety
+f = open("log.txt", "w")
+
+try:
+    while True:
+        # If user clicks STOP, exception triggers cleanup immediately
+        controller.sleep(1)
+        do_work()
+        
+finally:
+    # This block GUARANTEES execution:
+    # 1. If the loop finishes normally
+    # 2. If a crash happens
+    # 3. If the user clicks STOP (MacroAbortException)
+    print("Closing file...")
+    f.close()
+
+```
+
+---
+
+### 🧬 How to Add Custom Types
+
+Registering a new type is as simple as adding a decorator. You define how to **Read (Parse)** and **Write (Format)** the value, and the engine handles the rest.
+
+```python
+from macro_creator import registerHandler
+
+@registerHandler
+class HeroData:
+    """
+    A custom class to store hero configuration.
+    The 'display_name' attribute determines what the user sees in the UI tooltip.
+    """
+    display_name = "Hero Configuration" 
+
+    def __init__(self, name, level):
+        self.name = name
+        self.level = level
+
+    @staticmethod
+    def toString(obj):
+        # Convert object to string for the UI/Config file
+        return f"{obj.name}:{obj.level}"
+
+    @staticmethod
+    def fromString(text):
+        # Convert string back to object
+        try:
+            name, level = text.split(':')
+            return HeroData(name, int(level))
+        except ValueError:
+            raise ValueError("Format must be 'Name:Level'")
+
+```
+
+#### Supported Out-of-the-Box
+
+The engine comes pre-configured with handlers for standard and GUI types:
+
+* **Python Primitives:** `int`, `float`, `bool`, `str`, `list`, `tuple`
+* **Qt Geometry:** `QRect` (Screen Region), `QPoint` (Coordinate)
+* **Custom Extensions:** Add any class you want using the `@registerHandler` decorator or the type handler's `register` method.
+
 ---
 
 ## 🔮 Roadmap & Coming Soon
 
 I am actively working to make this the ultimate automation platform. Here is what is coming next:
 
-### 🛑 "Hard Pause" & Cleanup
+### 💾 Variable Serialization & State Persistence
 
-Currently, pausing a task suspends tasks on their next sleep cycle. I will be introducing a **Hard Pause** system to default to.
+Currently, task variables live entirely in memory; if you close the app, the data is lost. I will be building a powerful serialization layer that allows the engine to snapshot and save the exact state of your variables to the disk.
 
-* **What it means:** When you pause, the engine will respect `finally` blocks in your Python code.
-* **Why it matters:** This ensures connections are closed, files are saved, and resources are released cleanly, even when the user hits pause.
+**Planned Capabilities:**
+
+* **Variable Reloading:** If the application (or your computer) crashes mid-task, the engine will be able to reload the task with all local variables restored to their last known state. `counter=500` remains `500`, rather than resetting to `0`.
 
 ### 🎥 Visual Task Recorder (No-Code)
 

@@ -1,3 +1,4 @@
+from datetime import datetime
 import sys
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -9,8 +10,9 @@ from PySide6.QtCore import Qt, Signal, QPoint, QTimer, QRect
 from typing import Hashable
 from pynput import keyboard
 
+from .type_handler import GlobalTypeHandler
 from .overlay import TransparentOverlay
-from .types_and_enums import Pickable, CaptureMode, PICKABLE_TYPES
+from .types_and_enums import Pickable, CaptureMode, PICKABLE_TYPES, LogPacket, LogLevel, LogErrorPacket
 from .variable_config import VariableConfig
 
 # --- THEME & STYLING (QSS) ---
@@ -110,7 +112,7 @@ QHeaderView::section {
 QTextEdit {
     background-color: #111111;
     border: 1px solid #333;
-    color: #00ff00; /* Hacker Green for logs */
+    color: white;
     font-family: 'Consolas', monospace;
     font-size: 12px;
 }
@@ -150,41 +152,15 @@ def _safe_cast(value_str, target_type, default=None):
         return default
 
 def _flashError(item):
-    # 1. Save the original background so we can restore it later
-    # (If the cell has no color, this stores the "transparent/default" brush)
+    # Save the original background so we can restore it later
     original_background = item.background()
 
-    # 2. Set Error Color (Light Red)
+    # Set Error Color (Light Red)
     red_brush = QBrush(QColor("#FFCDD2"))  # A nice soft red
     item.setBackground(red_brush)
 
-    # 3. Schedule the restoration
-    # We use a lambda to capture the specific item and original color
+    # Schedule the restoration
     QTimer.singleShot(250, lambda: item.setBackground(original_background))
-
-def _getReadableTypeName(data_type):
-    # 1. Define your dictionary of "Pretty Names"
-    type_map = {
-        int: "Integer",
-        str: "Text",
-        bool: "Boolean",
-        float: "Decimal",
-        QRect: "Region",
-        QPoint: "Point",
-        list: "List",
-        dict: "Dictionary"
-    }
-
-    # 2. Return the mapped name if it exists
-    if data_type in type_map:
-        return type_map[data_type]
-
-    # 3. Fallback: Use the class name (e.g. "MyCustomClass" -> "MyCustomClass")
-    # We create a fallback just in case you add a type later and forget to map it.
-    try:
-        return data_type.__name__.capitalize()
-    except AttributeError:
-        return str(data_type)
 
 class MainWindow(QMainWindow):
     # Signals to talk to your Engine
@@ -343,7 +319,11 @@ class MainWindow(QMainWindow):
         if var_config.data_type is bool:
             var_config.value = item.checkState() == Qt.CheckState.Checked
         else:
-            success = var_config.parseAndSetValue(item.text().strip())
+            success = True
+            try:
+                var_config.value = GlobalTypeHandler.parse(var_config.data_type, item.text())
+            except (ValueError, TypeError):
+                success = False
 
             if not success:
                 self._updateVariableDisplay(item)
@@ -408,7 +388,7 @@ class MainWindow(QMainWindow):
         self.setup_table.setItem(row, 0, id_item)
 
         # Col 1: Type (Read only)
-        type_item = QTableWidgetItem(_getReadableTypeName(config.data_type))
+        type_item = QTableWidgetItem(GlobalTypeHandler.getDisplayName(config.data_type))
         type_item.setFlags(type_item.flags() ^ Qt.ItemFlag.ItemIsEditable)
         self.setup_table.setItem(row, 1, type_item)
 
@@ -433,9 +413,45 @@ class MainWindow(QMainWindow):
         if config.data_type in PICKABLE_TYPES:
             self.overlay.render_geometry.append(config)
 
-    def log(self, message: str):
+    @staticmethod
+    def _formatLogParts(packet: LogPacket):
+        html_parts = []
+        for item in packet.parts:
+            if hasattr(item, 'to_html'):
+                # Smart objects that know how to format themselves
+                html_parts.append(item.to_html())
+            else:
+                # Fallback: Use global casting
+                html_parts.append(GlobalTypeHandler.format(item))
+
+        # Join them with comma separated spaces
+        return ", ".join(html_parts)
+
+    def log(self, payload):
         """Thread-safe logging helper"""
-        self.console.append(f">> {message}")
+        if isinstance(payload, LogPacket):
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            text = self._formatLogParts(payload)
+            task_id = f"Task {payload.task_id}" if payload.task_id != -1 else "SYSTEM"
+            if payload.level is LogLevel.ERROR:
+                color_html = "red"
+            elif payload.level is LogLevel.WARN:
+                color_html = "orange"
+            elif payload.task_id == -1:
+                color_html = "#00ff00" # Green
+            else:
+                color_html = ""
+
+            self.console.append(f'[{timestamp}] <span style="color: {color_html};">[{task_id}] {text}</span>')
+        elif isinstance(payload, LogErrorPacket):
+            # TODO: Maybe add a clickable link to show the traceback?
+            task_id = payload.task_id if payload.task_id != -1 else "SYSTEM"
+            self.console.append(
+                f'<b style="color:darkred">CRITICAL ERROR in Task {task_id}: {payload.message}</b>'
+            )
+        elif isinstance(payload, str):
+            self.console.append(payload)
+
         # Auto scroll to bottom
         sb = self.console.verticalScrollBar()
         sb.setValue(sb.maximum())
@@ -470,7 +486,7 @@ class MainWindow(QMainWindow):
             if config.data_type is bool:
                 val_item.setCheckState(Qt.CheckState.Checked if config.value else Qt.CheckState.Unchecked)
             else:
-                val_item.setText(config.getValueStr())
+                val_item.setText(GlobalTypeHandler.format(config.value))
         finally:
             self.setup_table.blockSignals(False)
 

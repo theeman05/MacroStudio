@@ -4,18 +4,10 @@ from PySide6.QtCore import QMutex, QMutexLocker
 from typing import TYPE_CHECKING, Generator
 
 from .pause_state import PauseState
-from .types_and_enums import TaskFunc, MacroAbortException, MacroHardPauseException
+from .types_and_enums import TaskFunc, MacroAbortException, MacroHardPauseException, LogLevel
 
 if TYPE_CHECKING:
     from .macro_worker import MacroWorker
-
-def _tryWrapFun(func):
-    """If the function isn't a generator, wraps it into a generator function"""
-    if inspect.isgeneratorfunction(func):
-        yield from func()
-    else:
-        func()
-        yield
 
 class TaskController:
     def __init__(self, scheduler: "MacroWorker", task_func: TaskFunc, task_id: int):
@@ -46,10 +38,13 @@ class TaskController:
     def pause(self, hard=False):
         """
         If not paused already, halts the task from running its next step.
-        :param hard:
-            hard=True: Interrupts the task to release keys and clean up resources safely.
-            hard=False (default): Freezes the task in place (keys remain held down).
-        :return: True if paused successfully, false if the task has stopped
+        Args:
+            hard: Controls how the pause is handled.
+
+                * ``True``: Interrupts the task to **release keys** and **clean up resources** safely.
+                * ``False``: **Freezes** the task in place (keys remain held down).
+         Returns:
+             ``True`` if paused successfully, ``False`` if the engine has stopped abruptly.
         """
         if not self.pause_state.active:
             self.pause_state.trigger(hard)
@@ -63,7 +58,8 @@ class TaskController:
     def throwHardPauseError(self):
         """
         Safely attempts to throw a hard pause error onto the current generator.
-        :return: True if the task is now hard paused, False if it was stopped
+        Returns:
+            ``True`` if the task is now hard paused, ``False`` if it was stopped abruptly.
         """
         with QMutexLocker(self._mutex):
             if not self._generator: return False
@@ -85,7 +81,8 @@ class TaskController:
         """
         If the engine is running and task was previously paused, resumes from where it left off.
         If the task finished already, does nothing.
-        :return: The duration paused for in seconds or None if not paused.
+        Returns:
+            The duration paused for in seconds or ``None`` if not paused.
         """
         was_hard_pause = self.pause_state.is_hard
         elapsed = self.pause_state.clear() if self._scheduler.running else None
@@ -99,24 +96,39 @@ class TaskController:
 
         return elapsed
 
+    def _tryWrapFunc(self):
+        """If the function isn't a generator, wraps it into a generator function"""
+        func = self.func
+        sig = inspect.signature(func)
+        kwargs = {}
+
+        # Check if they want the 'controller' argument
+        if 'controller' in sig.parameters:
+            kwargs['controller'] = self  # Inject as the controller
+
+        if inspect.isgeneratorfunction(func):
+            yield from func(**kwargs)
+        else:
+            func(**kwargs)
+            yield
+
     def resetGeneratorAndGetSorKey(self, create_new: bool=True):
         """
-        Creates a new generator (if create_new is true) and destroys the old one, also resets pause state.
-        :return: The sort key
+        Creates a new generator (if create_new is ``True``) and destroys the old one, also resets pause state.
+        Returns:
+            The sort key
         """
         self.pause_state.clear()
         with QMutexLocker(self._mutex):
             self._generation += 1
             self._wake_time = 0
             prev_gen = self._generator
-            self._generator = _tryWrapFun(self.func) if create_new else None
+            self._generator = self._tryWrapFunc() if create_new else None
             if prev_gen: prev_gen.close()
             return self._unsafeGetSortKey()
 
     def stop(self):
-        """
-        Stops a task on its next cycle, allowing execution to finish.
-        """
+        """Stops a task on its next cycle. """
         self.resetGeneratorAndGetSorKey(False)
 
     def restart(self):
@@ -124,11 +136,10 @@ class TaskController:
         self._scheduler.moveToActiveAndReschedule(self, *self.resetGeneratorAndGetSorKey())
 
     def isPaused(self):
-        """:return: Whether the controller is paused."""
         return self.pause_state.active
 
     def isRunning(self):
-        """Returns if this controller is running currently, or not. If it is paused, it will still be considered as running."""
+        """Returns if this controller is running or not. If it is paused, it will still be considered as running."""
         return self._generator is not None
 
     def getGeneration(self):
@@ -138,8 +149,10 @@ class TaskController:
 
     def delayAndGetSortKey(self, delay: float=None):
         """
-        Return the comparable variables and optionally delay the wake time.
-        If no delay is provided, resets the wake time to 0.
+        Returns:
+
+            * The comparable variables and optionally delay the wake time.
+            * If no delay is provided, resets the wake time to 0.
         """
         with QMutexLocker(self._mutex):
             self._wake_time = 0 if delay is None else (self._wake_time + delay)
@@ -156,9 +169,11 @@ class TaskController:
     def sleep(self, duration: float = .01):
         """
         Blocks the current thread with high precision.
-        :param duration: Duration to sleep the thread for in seconds.
-        :raise MacroAbortException: If stopped.
-        :raise MacroHardPauseException: If hard-paused (triggers finally).
+        Args:
+            duration: Duration to sleep the thread for in seconds.
+        Raises:
+            MacroAbortException: If stopped while sleeping.
+            MacroHardPauseException: If hard-paused while sleeping.
         """
         if duration <= 0:
             return
@@ -207,15 +222,30 @@ class TaskController:
 
     def waitForResume(self):
         """
-        While paused, blocks the current thread and waits until the pause flag is cleared.
-        :raise MacroAbortException: If stopped.
+        Blocks the thread **ONLY** if the system or this task is in a Hard Pause (Safety stop).
+        If the task is just 'Soft Paused' (logic wait), this returns immediately.
+        Raises:
+            MacroAbortException: If stopped while waiting.
         """
-        while self.isRunning() and (self.isPaused() or self._scheduler.isPaused()):
+        while self.isRunning() and (self.pause_state.is_hard or self._scheduler.pause_state.is_hard):
             time.sleep(0.1)  # Low CPU usage wait
 
         # If one of the two are no longer running, throw abort exception
         if not (self._scheduler.isRunning() and self.isRunning()):
             raise MacroAbortException("Worker stopped while waiting for resume.")
+
+    def log(self, *args, level: LogLevel=LogLevel.INFO):
+        """
+        Sends a structured log packet to the ui.
+        Args:
+            args: The objects to be printed in the log. If mode is not ERROR, will cast the args automatically.
+            level: The log level to display at.
+        """
+        self._scheduler.log(*args, level=level, task_id=self._id)
+
+    def logError(self, error_msg, trace=""):
+        """Sends a specialized LogErrorPacket object to the ui."""
+        self._scheduler.logError(error_msg, trace, self._id)
 
     def __iter__(self):
         return self

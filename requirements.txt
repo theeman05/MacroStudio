@@ -3,7 +3,5 @@ pytesseract
 pydirectinput-rgx
 mss
 pillow
-PyQt6
 pynput
-pyqt6-sip
 pyside6
