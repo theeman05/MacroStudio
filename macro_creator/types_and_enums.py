@@ -1,6 +1,10 @@
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import TypeAlias, Callable, Generator, Tuple
+from typing import TYPE_CHECKING, TypeAlias, Callable, Generator, Tuple
+
+if TYPE_CHECKING:
+    from .gui_main import MainWindow
+    from .variable_config import VariableConfig
 
 class CaptureMode(Enum):
     POINT = auto()      # Single click
@@ -11,6 +15,7 @@ class CaptureTypeDef:
     mode: CaptureMode
     type_class: type
     tip: str
+    capture_handler: Callable[["MainWindow", "VariableConfig"], None]
 
 class LogLevel(Enum):
     ERROR = auto()

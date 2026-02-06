@@ -6,13 +6,13 @@ from PySide6.QtWidgets import (
     QDialog, QPlainTextEdit, QDialogButtonBox, QStyledItemDelegate
 )
 from PySide6.QtGui import QCloseEvent, QBrush, QColor, QFont, QDesktopServices, QAction
-from PySide6.QtCore import Qt, Signal, QPoint, QTimer, QRect, QUrl, QEvent
+from PySide6.QtCore import Qt, Signal, QTimer, QUrl, QEvent
 from pynput import keyboard
 
 from .capture_type_registry import CaptureRegistry
 from .type_handler import GlobalTypeHandler
 from .overlay import TransparentOverlay
-from .types_and_enums import CaptureMode, LogPacket, LogLevel, LogErrorPacket
+from .types_and_enums import LogPacket, LogLevel, LogErrorPacket
 from .variable_config import VariableConfig
 from .theme_manager import ThemeManager
 
@@ -86,7 +86,7 @@ class MainWindow(QMainWindow):
         self.app = QApplication(sys.argv)
         super().__init__()
         self.setWindowTitle("Macro Engine v1.0")
-        self.resize(1000, 700)
+        self.resize(700, 700)
 
         self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint)
 
@@ -273,7 +273,9 @@ class MainWindow(QMainWindow):
 
         config = self._getVarConfig(item)
         if not config: return
-        if CaptureRegistry.containsType(config.data_type):
+
+        capture_mode = CaptureRegistry.getModeFromType(config.data_type)
+        if capture_mode:
             menu = QMenu()
             capture_action = menu.addAction("Capture Data")
 
@@ -281,7 +283,10 @@ class MainWindow(QMainWindow):
             action = menu.exec(self.setup_table.viewport().mapToGlobal(position))
 
             if action == capture_action:
-                self._startCaptureOverlay(item, config)
+                self._pending_capture_item = item
+                self.hide()
+                CaptureRegistry.get(capture_mode).capture_handler(self, config)
+
 
     def _updateValueText(self, item: QTableWidgetItem, config: VariableConfig):
         if config.data_type is bool:
@@ -421,20 +426,6 @@ class MainWindow(QMainWindow):
         else:
             self.btn_overlay.setStyleSheet("")
             self.overlay.hide()
-
-    def _startCaptureOverlay(self, item, config: VariableConfig):
-        """Begins the picking process"""
-        self._pending_capture_item = item
-        self.hide()
-        var_type = config.data_type
-        pick_hint = config.hint
-        capture_mode = var_type
-        if var_type is QRect:
-            capture_mode = CaptureMode.REGION
-        elif var_type is QPoint:
-            capture_mode = CaptureMode.POINT
-
-        self.overlay.startCapture(capture_mode, pick_hint)
 
     def _updateVariableDisplay(self, val_item: QTableWidgetItem, config: VariableConfig):
         """Update the widget item's display based on the config value"""

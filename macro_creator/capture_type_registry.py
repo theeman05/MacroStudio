@@ -1,6 +1,11 @@
 from PySide6.QtCore import QRect, QPoint
 
+from typing import TYPE_CHECKING
 from .types_and_enums import CaptureTypeDef, CaptureMode
+
+if TYPE_CHECKING:
+    from .gui_main import MainWindow
+    from .variable_config import VariableConfig
 
 class CaptureRegistry:
     _definitions = {} # Maps Mode -> Definition
@@ -40,14 +45,21 @@ class CaptureRegistry:
         """
         return type_class in cls._type_map
 
+def captureOverlayGeneric(window: "MainWindow", config: "VariableConfig"):
+    """Standard handler for modes that uses the existing Overlay system."""
+    window.overlay.startCapture(CaptureRegistry.getModeFromType(config.data_type), config.hint)
+
+
 CaptureRegistry.register(CaptureTypeDef(
     mode=CaptureMode.POINT,
     type_class=QPoint,
-    tip="Format: x, y"
+    tip="Format: x, y",
+    capture_handler=captureOverlayGeneric,
 ))
 
 CaptureRegistry.register(CaptureTypeDef(
     mode=CaptureMode.REGION,
     type_class=QRect,
-    tip="Format: x, y, width, height"
+    tip="Format: x, y, width, height",
+    capture_handler=captureOverlayGeneric,
 ))
