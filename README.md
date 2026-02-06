@@ -88,7 +88,7 @@ When you add a task, the engine returns a **Controller**. You can use this objec
 
 Sometimes you need to run blocking code (like heavy calculations or network requests) that doesn't support generators. You can run these in a separate thread while keeping them synchronized with the engine's Pause/Stop system.
 
-* **Key Rule:** Pass the `TaskController` to your thread and use `controller.sleep(seconds)`. This ensures the thread pauses correctly if the user hits the global Pause button.
+* **Key Rule:** Pass the `TaskController` to your thread and use `controller.sleep(seconds)`. This ensures the thread pauses correctly if the task is paused.
 
 ```python
 import threading
@@ -143,10 +143,6 @@ if __name__ == "__main__":
 
 * **Generator Tasks:** Use **Cooperative Multitasking**. The engine cycles through tasks, running them until they `yield`. This makes the bot extremely lightweight and CPU efficient.
 * **Threaded Tasks:** Run in parallel. By using `controller.sleep()`, you bridge the gap, allowing the main engine to safely pause or stop these threads even though they are running outside the main loop.
-
-Here is a "Feature Highlight" block for your documentation. You can place this under your **Key Features** or **Developer API** section.
-
-It highlights the system's ability to seamlessly bridge raw Python code with a user-friendly GUI.
 
 ---
 

@@ -214,3 +214,33 @@ class ListHandler:
             return val
         except (ValueError, SyntaxError):
             raise ValueError(f"Invalid list format: {text}")
+
+@register_handler(tuple)
+class TupleHandler:
+    @staticmethod
+    def toString(val: tuple):
+        return str(tuple(GlobalTypeHandler.format(item) for item in val))
+
+    @staticmethod
+    def fromString(text: str):
+        text = text.strip()
+
+        if not text:
+            return ()
+
+        # Add parens if user forgot them: "1, 2" -> "(1, 2)"
+        # Note: Users must explicitly type "1," (with comma) for single-item tuples
+        if not text.startswith("("):
+            text = f"({text})"
+
+        try:
+            val = ast.literal_eval(text)
+
+            # Edge case: "(1)" parses as int 1, not tuple (1,).
+            # We fail here so user knows to add a comma.
+            if not isinstance(val, tuple):
+                raise ValueError("Parsed value is not a tuple (Did you forget a comma for a single item?)")
+
+            return val
+        except (ValueError, SyntaxError):
+            raise ValueError(f"Invalid tuple format: {text}")
