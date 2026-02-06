@@ -103,7 +103,7 @@ def _registerClass(cls, target_type = None):
                                )
     return cls
 
-def registerHandler(cls=None):
+def register_handler(cls=None):
     """
     Auto-registers a class.
 
@@ -132,7 +132,7 @@ def registerHandler(cls=None):
     return wrapper
 
 # --- Custom type registration ---
-@registerHandler(QRect)
+@register_handler(QRect)
 class QRectHandler:
     display_name = "Region"
 
@@ -153,7 +153,7 @@ class QRectHandler:
         except ValueError:
             raise ValueError(f"Could not convert parts to integers: {text}")
 
-@registerHandler(QPoint)
+@register_handler(QPoint)
 class QPointHandler:
     display_name = "Point"
     @staticmethod
@@ -175,7 +175,7 @@ class QPointHandler:
 
 
 # --- Python type registration ---
-@registerHandler(bool)
+@register_handler(bool)
 class BooleanHandler:
     display_name = "Boolean"
 
@@ -184,7 +184,7 @@ class BooleanHandler:
         clean = text.strip().lower()
         return clean in ("true", "1", "yes", "on", "t")
 
-@registerHandler(list)
+@register_handler(list)
 class ListHandler:
     @staticmethod
     def toString(val: list):

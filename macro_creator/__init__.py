@@ -3,7 +3,7 @@ from .task_controller import TaskController
 from .types_and_enums import CaptureMode, Pickable, MacroHardPauseException, MacroAbortException, LogLevel
 from .variable_config import VariableConfig
 from .utils import macroSleep, macroWaitForResume, macroRunTaskInThread
-from .type_handler import GlobalTypeHandler, registerHandler
+from .type_handler import GlobalTypeHandler, register_handler
 
 __all__ = [
     'MacroCreator',
@@ -18,5 +18,5 @@ __all__ = [
     'macroSleep',
     'macroWaitForResume',
     'macroRunTaskInThread',
-    'registerHandler',
+    'register_handler',
 ]

@@ -265,15 +265,16 @@ finally:
 Registering a new type is as simple as adding a decorator. You define how to **Read (Parse)** and **Write (Format)** the value, and the engine handles the rest.
 
 ```python
-from macro_creator import registerHandler
+from macro_creator import register_handler
 
-@registerHandler
+
+@register_handler
 class HeroData:
     """
     A custom class to store hero configuration.
     The 'display_name' attribute determines what the user sees in the UI tooltip.
     """
-    display_name = "Hero Configuration" 
+    display_name = "Hero Configuration"
 
     def __init__(self, name, level):
         self.name = name
