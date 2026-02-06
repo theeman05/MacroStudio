@@ -33,12 +33,6 @@ The Engine features a robust **Global Type Registry** that bridges the gap betwe
 
 ---
 
-Here is the updated **Usage Section** including the new step for **Threaded Tasks**.
-
-I have structured it to clearly distinguish between the "Generator Method" (efficient, main thread) and the "Threaded Method" (good for blocking operations), as they require slightly different sleep commands.
-
-You can paste this entire block into your `README.md`.
-
 ## 🛠️ Usage
 
 ### 1. Create a Standard Task (Generators)

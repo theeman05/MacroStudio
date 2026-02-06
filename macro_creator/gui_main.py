@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QHeaderView, QFrame, QSplitter, QProgressBar, QStatusBar, QMenu, QTextBrowser,
     QDialog, QPlainTextEdit, QDialogButtonBox
 )
-from PySide6.QtGui import QCloseEvent, QBrush, QColor, QFont, QDesktopServices
+from PySide6.QtGui import QCloseEvent, QBrush, QColor, QFont, QDesktopServices, QAction
 from PySide6.QtCore import Qt, Signal, QPoint, QTimer, QRect, QUrl
 from typing import Hashable
 from pynput import keyboard
@@ -482,6 +482,16 @@ class LogWidget(QTextBrowser):
 
         if url.scheme() in ["http", "https"]:
             QDesktopServices.openUrl(url)
+
+    def contextMenuEvent(self, event):
+        # Get the standard right-click menu (Copy, Select All, etc.)
+        # We start with this so we don't lose the default features.
+        menu = self.createStandardContextMenu()
+        menu.addSeparator()
+        clear_action = QAction("Clear Console", self)
+        clear_action.triggered.connect(self.clear)
+        menu.addAction(clear_action)
+        menu.exec(event.globalPos())
 
 class TracebackDialog(QDialog):
     def __init__(self, traceback_text, parent=None):
