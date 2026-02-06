@@ -1,12 +1,12 @@
+import uuid, sys
 from datetime import datetime
-import sys
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QTableWidget, QTableWidgetItem, QHeaderView,
-    QFrame, QTextEdit, QSplitter, QProgressBar, QStatusBar, QMenu
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QTableWidget,
+    QTableWidgetItem, QHeaderView, QFrame, QSplitter, QProgressBar, QStatusBar, QMenu, QTextBrowser,
+    QDialog, QPlainTextEdit, QDialogButtonBox
 )
-from PySide6.QtGui import QCloseEvent, QBrush, QColor
-from PySide6.QtCore import Qt, Signal, QPoint, QTimer, QRect
+from PySide6.QtGui import QCloseEvent, QBrush, QColor, QFont, QDesktopServices
+from PySide6.QtCore import Qt, Signal, QPoint, QTimer, QRect, QUrl
 from typing import Hashable
 from pynput import keyboard
 
@@ -270,9 +270,7 @@ class MainWindow(QMainWindow):
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)  # Value takes space
 
         # 2. CONSOLE
-        self.console = QTextEdit()
-        self.console.setReadOnly(True)
-        self.console.setPlaceholderText("System initialized. Waiting for tasks...")
+        self.console = LogWidget()
 
         splitter.addWidget(self.setup_table)
         splitter.addWidget(self.console)
@@ -371,7 +369,6 @@ class MainWindow(QMainWindow):
                 self._startCaptureOverlay(item, config)
 
     # --- FUNCTIONALITY HOOKS ---
-
     def addSetupItem(self, var_id: Hashable, config: VariableConfig):
         """
         Adds a row WITHOUT triggering the 'itemChanged' signal.
@@ -444,11 +441,18 @@ class MainWindow(QMainWindow):
 
             self.console.append(f'[{timestamp}] <span style="color: {color_html};">[{task_id}] {text}</span>')
         elif isinstance(payload, LogErrorPacket):
-            # TODO: Maybe add a clickable link to show the traceback?
-            task_id = payload.task_id if payload.task_id != -1 else "SYSTEM"
-            self.console.append(
-                f'<b style="color:darkred">CRITICAL ERROR in Task {task_id}: {payload.message}</b>'
+            trace_id = uuid.uuid4().hex
+
+            self.console.traceback_storage[trace_id] = payload.traceback
+
+            link_href = f"#id_{trace_id}"
+
+            log_msg = (
+                f'<b style="color:darkred">CRITICAL ERROR in Task {payload.task_id}: {payload.message}</b> '
+                f'<a href="{link_href}" style="color:red; text-decoration: underline;">[View Traceback]</a>'
             )
+
+            self.console.append(log_msg)
         elif isinstance(payload, str):
             self.console.append(payload)
 
@@ -555,6 +559,69 @@ class MainWindow(QMainWindow):
         # 3. Accept the event to let the window close
         event.accept()
 
+
+class LogWidget(QTextBrowser):
+    def __init__(self):
+        super().__init__()
+        self.setOpenExternalLinks(False)
+        self.setPlaceholderText("System initialized. Waiting for tasks...")
+        self.anchorClicked.connect(self._onLinkClicked)
+        self.traceback_storage = {}
+
+    def _onLinkClicked(self, url: QUrl):
+        # 1. Check if it's our custom scheme
+        url_str = url.toString()
+        if url_str.startswith("#id_"):
+            # Strip the "#id_" part to get the clean UUID
+            trace_id = url_str.replace("#id_", "")
+
+            trace_text = self.traceback_storage.get(trace_id, "Traceback not found.")
+
+            # Show the dialog
+            dialog = TracebackDialog(trace_text, self)
+            dialog.exec()
+            return
+
+        if url.scheme() in ["http", "https"]:
+            QDesktopServices.openUrl(url)
+
+class TracebackDialog(QDialog):
+    def __init__(self, traceback_text, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Error Traceback")
+        self.resize(700, 500)  # Set a nice big default size
+
+        layout = QVBoxLayout(self)
+
+        self.text_area = QPlainTextEdit()
+        self.text_area.setReadOnly(True)
+        self.text_area.setPlainText(traceback_text)
+
+        # Set a Monospace Font (Critical for code readability)
+        font = QFont("Courier New", 10)
+        font.setStyleHint(QFont.StyleHint.Monospace)
+        self.text_area.setFont(font)
+
+        # Disable line wrapping so long lines don't look messy
+        self.text_area.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+
+        layout.addWidget(self.text_area)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(self.accept)  # Close when clicked
+
+        copy_btn = buttons.addButton("Copy", QDialogButtonBox.ButtonRole.ActionRole)
+        copy_btn.clicked.connect(self.copyToClipboard)
+
+        layout.addWidget(buttons)
+
+    def copyToClipboard(self):
+        self.text_area.selectAll()
+        self.text_area.copy()
+        # Deselect to look clean
+        cursor = self.text_area.textCursor()
+        cursor.clearSelection()
+        self.text_area.setTextCursor(cursor)
 
 # --- ENTRY POINT (For testing visual look) ---
 if __name__ == "__main__":

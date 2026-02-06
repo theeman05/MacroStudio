@@ -113,6 +113,7 @@ class MacroWorker(QThread):
             else:
                 self.log("System terminated all active tasks during hard pause.", level=LogLevel.WARN)
 
+
     def run(self):
         completed = False
         while self.running and not self.isPaused():
@@ -167,7 +168,7 @@ class MacroWorker(QThread):
                     self.log(f"Task {controller.cid} finished.")
                 except Exception as e:
                     controller.stop()
-                    self.logError(f"Error in Task {controller.cid}: {str(e)}", trace=traceback.format_exc())
+                    self.logError(f"{str(e)}", trace=traceback.format_exc(), task_id=controller.cid)
             else:
                 self.msleep(delay_ms)
 

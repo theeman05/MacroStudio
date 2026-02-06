@@ -49,11 +49,11 @@ class ThreadMacro:
         self.thread_task_controller = creator.addRunTask(_threadedTask)
         self.pauser_controller = creator.addRunTask(self.threadHardPauser)
 
-    def threadHardPauser(self):
+    def threadHardPauser(self, controller):
         # Let's attempt to hard pause the threaded task!
         yield from macroSleep(1)
         # After a second of running, pause the threaded task
-        self.pauser_controller.log("Hard pausing the thread controller!")
+        controller.log("Hard pausing the thread controller!")
         self.thread_task_controller.pause(True)
         yield from macroSleep(2)
         # After two seconds, unpause the threaded task so it can finish

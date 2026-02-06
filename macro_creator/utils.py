@@ -128,19 +128,20 @@ def macroRunTaskInThread(target_func, *args, **kwargs):
     t.start()
 
     # Poll the thread state frequently so the UI feels responsive.
-    while t.is_alive():
-        # Check if the thread crashed
+    try:
+        while t.is_alive():
+            # Check if the thread crashed
+            if thread_exception:
+                raise thread_exception[0]  # Re-raise in the main engine!
+            try:
+                # Short sleep to yield control back to the engine scheduler
+                yield from macroSleep(0.05)
+            except MacroHardPauseException:
+                # The Engine is Hard Paused.
+                # The THREAD should handle its own pausing via controller.sleep(),
+                # but WE (the monitor) must sit here and wait for the resume signal.
+                yield from macroWaitForResume()
+    finally:
+        # Final Error Check (in case it crashed right at the end)
         if thread_exception:
-            raise thread_exception[0]  # Re-raise in the main engine!
-        try:
-            # Short sleep to yield control back to the engine scheduler
-            yield from macroSleep(0.05)
-        except MacroHardPauseException:
-            # The Engine is Hard Paused.
-            # The THREAD should handle its own pausing via controller.sleep(),
-            # but WE (the monitor) must sit here and wait for the resume signal.
-            yield from macroWaitForResume()
-
-    # Final Error Check (in case it crashed right at the end)
-    if thread_exception:
-        raise thread_exception[0]
+            raise thread_exception[0]
