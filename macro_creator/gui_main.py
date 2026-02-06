@@ -14,109 +14,7 @@ from .type_handler import GlobalTypeHandler
 from .overlay import TransparentOverlay
 from .types_and_enums import Pickable, CaptureMode, PICKABLE_TYPES, LogPacket, LogLevel, LogErrorPacket
 from .variable_config import VariableConfig
-
-# --- THEME & STYLING (QSS) ---
-# I'm NGL, I just used AI for this design lmaooo
-# This defines the "look and feel" - Dark Mode, Flat Design.
-DARK_THEME = """
-QMainWindow {
-    background-color: #1e1e1e;
-}
-QWidget {
-    color: #e0e0e0;
-    font-family: 'Segoe UI', sans-serif;
-    font-size: 14px;
-}
-/* --- Buttons --- */
-QPushButton {
-    background-color: #3c3c3c;
-    border: 1px solid #555;
-    border-radius: 4px;
-    padding: 6px 12px;
-    color: #fff;
-}
-QPushButton:hover {
-    background-color: #505050;
-    border-color: #666;
-}
-QPushButton:pressed {
-    background-color: #2d2d2d;
-}
-/* Specific Button Colors */
-QPushButton#btn_start {
-    background-color: #2ea043; /* Green */
-    border: 1px solid #298e3b;
-    font-weight: bold;
-}
-QPushButton#btn_start:hover { background-color: #3fb950; }
-
-QPushButton#btn_stop {
-    background-color: #da3633; /* Red */
-    border: 1px solid #d82a27;
-}
-QPushButton#btn_stop:hover { background-color: #f85149; }
-
-QPushButton#btn_reset {
-    background-color: #1f6feb; /* Blue */
-    border: 1px solid #1158c7;
-}
-
-QPushButton#btn_pick {
-    background-color: #264f78; 
-    border: none; 
-    border-radius: 2px;
-}
-QPushButton#btn_pick:hover { background-color: #3a6ea5; }
-
-QProgressBar {
-    border: 1px solid #bbb;
-    border-radius: 4px;
-    text-align: center;
-}
-
-QProgressBar::chunk {
-    background-color: #4CAF50; /* Green */
-    width: 20px;
-}
-
-/* DYNAMIC STATES */
-QPushButton#btn_start[state="paused"] {
-    background-color: #d29922;
-    border: 1px solid #b08800;
-}
-QPushButton#btn_start[state="paused"]:hover {
-    background-color: #eac54f; /* Lighter Orange for Hover */
-    border-color: #d29922;
-}
-
-QProgressBar[state="paused"]::chunk {
-    background-color: #FFEB3B; /* Yellow */
-}
-
-/* --- Table (Setup Steps) --- */
-QTableWidget {
-    background-color: #252526;
-    border: 1px solid #333;
-    gridline-color: #333;
-    selection-background-color: #264f78;
-}
-QHeaderView::section {
-    background-color: #333333;
-    padding: 4px;
-    border: 1px solid #1e1e1e;
-    color: #cccccc;
-    font-weight: bold;
-}
-
-/* --- Console/Logs --- */
-QTextEdit {
-    background-color: #111111;
-    border: 1px solid #333;
-    color: white;
-    font-family: 'Consolas', monospace;
-    font-size: 12px;
-}
-"""
+from .theme_manager import ThemeManager
 
 
 def _set_btn_state(btn, state_value):
@@ -184,7 +82,7 @@ class MainWindow(QMainWindow):
         self._pending_capture_item = None
 
         # Apply the Theme
-        self.setStyleSheet(DARK_THEME)
+        ThemeManager.applyTheme(self)
 
         # Main Layout Container
         self.central_widget = QWidget()

@@ -1,0 +1,108 @@
+QMainWindow {
+    background-color: $bg_primary;
+}
+
+QWidget {
+    color: $text_primary;
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 14px;
+}
+
+/* --- Generic Buttons --- */
+QPushButton {
+    background-color: $btn_bg;
+    border: 1px solid $btn_border;
+    border-radius: 4px;
+    padding: 6px 12px;
+    color: $text_light;
+}
+QPushButton:hover {
+    background-color: $btn_hover;
+    border-color: $btn_border_h;
+}
+QPushButton:pressed {
+    background-color: $btn_press;
+}
+
+/* --- Specific Button Colors --- */
+QPushButton#btn_start {
+    background-color: $btn_start_bg;
+    border: 1px solid $btn_start_border;
+    font-weight: bold;
+}
+QPushButton#btn_start:hover {
+    background-color: $btn_start_hover;
+}
+
+QPushButton#btn_stop {
+    background-color: $btn_stop_bg;
+    border: 1px solid $btn_stop_border;
+}
+QPushButton#btn_stop:hover {
+    background-color: $btn_stop_hover;
+}
+
+QPushButton#btn_reset {
+    background-color: $btn_reset_bg;
+    border: 1px solid $btn_reset_border;
+}
+
+QPushButton#btn_pick {
+    background-color: $btn_pick_bg;
+    border: none;
+    border-radius: 2px;
+}
+QPushButton#btn_pick:hover {
+    background-color: $btn_pick_hover;
+}
+
+/* --- Progress Bar --- */
+QProgressBar {
+    border: 1px solid $progress_border;
+    border-radius: 4px;
+    text-align: center;
+    color: $text_primary;
+}
+QProgressBar::chunk {
+    background-color: $progress_chunk;
+    width: 20px;
+}
+
+/* --- DYNAMIC STATES (Paused) --- */
+QPushButton#btn_start[state="paused"] {
+    background-color: $btn_paused_bg;
+    border: 1px solid $btn_paused_border;
+}
+QPushButton#btn_start[state="paused"]:hover {
+    background-color: $btn_paused_hover;
+    border-color: $btn_paused_border;
+}
+
+QProgressBar[state="paused"]::chunk {
+    background-color: $progress_paused;
+}
+
+/* --- Table (Setup Steps) --- */
+QTableWidget {
+    background-color: $bg_secondary;
+    border: 1px solid $border_color;
+    gridline-color: $table_grid;
+    selection-background-color: $table_selection;
+    color: $text_primary;
+}
+QHeaderView::section {
+    background-color: $header_bg;
+    padding: 4px;
+    border: 1px solid $header_border;
+    color: $header_text;
+    font-weight: bold;
+}
+
+/* --- Console/Logs --- */
+QTextEdit, QTextBrowser {
+    background-color: $console_bg;
+    border: 1px solid $border_color;
+    color: $console_text;
+    font-family: 'Consolas', monospace;
+    font-size: 12px;
+}
