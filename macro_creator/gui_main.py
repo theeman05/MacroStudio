@@ -3,19 +3,21 @@ from datetime import datetime
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QTableWidget,
     QTableWidgetItem, QHeaderView, QFrame, QSplitter, QProgressBar, QStatusBar, QMenu, QTextBrowser,
-    QDialog, QPlainTextEdit, QDialogButtonBox
+    QDialog, QPlainTextEdit, QDialogButtonBox, QStyledItemDelegate
 )
 from PySide6.QtGui import QCloseEvent, QBrush, QColor, QFont, QDesktopServices, QAction
-from PySide6.QtCore import Qt, Signal, QPoint, QTimer, QRect, QUrl
-from typing import Hashable
+from PySide6.QtCore import Qt, Signal, QPoint, QTimer, QRect, QUrl, QEvent
 from pynput import keyboard
 
+from .capture_type_registry import CaptureRegistry
 from .type_handler import GlobalTypeHandler
 from .overlay import TransparentOverlay
-from .types_and_enums import Pickable, CaptureMode, PICKABLE_TYPES, LogPacket, LogLevel, LogErrorPacket
+from .types_and_enums import CaptureMode, LogPacket, LogLevel, LogErrorPacket
 from .variable_config import VariableConfig
 from .theme_manager import ThemeManager
 
+
+EMPTY_VALUE_STR = "<Empty>"
 
 def _set_btn_state(btn, state_value):
     """
@@ -60,14 +62,27 @@ def _flashError(item):
     # Schedule the restoration
     QTimer.singleShot(250, lambda: item.setBackground(original_background))
 
+def _updateTypeItem(type_item: QTableWidgetItem, value_item: QTableWidgetItem, config: VariableConfig):
+    capture_mode = CaptureRegistry.getModeFromType(config.data_type)
+    if capture_mode:
+        tip = f"{CaptureRegistry.get(capture_mode).tip} | Right click to open action menu and capture"
+    else:
+        tip = config.hint or "Manually edit this value."
+
+    type_item.setText(GlobalTypeHandler.getDisplayName(config.data_type))
+    value_item.setToolTip(tip)
+
+    # Make foreground look nice for capturable items
+    if capture_mode: type_item.setForeground(QBrush(QColor("#aaddff")))  # Light Blue
+
 class MainWindow(QMainWindow):
     # Signals to talk to your Engine
     start_signal = Signal()
-    stop_signal = Signal()
+    stop_signal = Signal(bool)
     pause_signal = Signal()
     hotkey_signal = Signal(str)
 
-    def __init__(self):
+    def __init__(self, name):
         self.app = QApplication(sys.argv)
         super().__init__()
         self.setWindowTitle("Macro Engine v1.0")
@@ -92,7 +107,7 @@ class MainWindow(QMainWindow):
         self.main_layout.setSpacing(10)
 
         # Build UI components
-        self._setupHeader()
+        self._setupHeader(name)
         self._setupControls()
         self._setupSplitView()
         self._setupStatusBar()
@@ -107,11 +122,11 @@ class MainWindow(QMainWindow):
         self.listener.start()
         self.setup_table.itemChanged.connect(self._onTableChanged)
 
-    def _setupHeader(self):
+    def _setupHeader(self, name):
         """Top bar with Title and Overlay Toggle"""
         header_layout = QHBoxLayout()
 
-        title = QLabel("MACRO // CONTROLLER")
+        title = QLabel(f"MACRO // {name}")
         title.setStyleSheet("font-size: 18px; font-weight: bold; color: #888;")
 
         self.btn_overlay = QPushButton("Toggle Overlay")
@@ -161,6 +176,7 @@ class MainWindow(QMainWindow):
         labels = ["Variable ID", "Type", "Value"]
         self.setup_table.setColumnCount(len(labels))
         self.setup_table.setHorizontalHeaderLabels(labels)
+        self.setup_table.setItemDelegateForColumn(2, SmartDelegate(self.setup_table))
 
         header = self.setup_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # ID fits content
@@ -200,15 +216,19 @@ class MainWindow(QMainWindow):
         self.status.addPermanentWidget(self.status_label)
         self.status.addPermanentWidget(self.progress)
 
+    def _getVarConfig(self, item: QTableWidgetItem):
+        return self.setup_table.item(item.row(), 0).data(Qt.ItemDataRole.UserRole)
+
     def _onTableChanged(self, item):
         """
         Triggered when ANY cell is changed (by user or code).
         """
-        # 1. We only care if the user edited the "Value" column (Column 2)
-        if item.column() != 2:
+        # We only care if the user edited the "Value" column (Column 2)
+        # Also Return if it's been marked as empty and the text is already the empty str
+        if item.column() != 2 or (item.data(Qt.ItemDataRole.UserRole) and item.text() == EMPTY_VALUE_STR):
             return
 
-        var_config = item.data(Qt.ItemDataRole.UserRole)
+        var_config = self._getVarConfig(item)
         if var_config is None:
             return # This wasn't a value cell (maybe it was a header?)
 
@@ -217,21 +237,20 @@ class MainWindow(QMainWindow):
         else:
             success = True
             try:
-                var_config.value = GlobalTypeHandler.parse(var_config.data_type, item.text())
+                var_config.value = GlobalTypeHandler.fromString(var_config.data_type, item.text())
             except (ValueError, TypeError):
                 success = False
 
             if not success:
-                self._updateVariableDisplay(item)
+                self._updateVariableDisplay(item, var_config)
                 _flashError(item)
-            elif var_config.data_type in PICKABLE_TYPES and var_config.value:
-                # Update overlay
+            elif CaptureRegistry.containsType(var_config.data_type) and var_config.value:
                 self.overlay.update()
 
     def _onItemHovered(self, item):
-        config = item.data(Qt.ItemDataRole.UserRole)
+        config = self._getVarConfig(item)
         prev_highlighted = self.overlay.highlighted_config
-        self.overlay.highlighted_config = config if (config and config.data_type in PICKABLE_TYPES) else None
+        self.overlay.highlighted_config = config if (config and CaptureRegistry.containsType(config.data_type)) else None
         # If the config changed, update the overlay
         if prev_highlighted != self.overlay.highlighted_config:
             self.overlay.update()
@@ -252,61 +271,98 @@ class MainWindow(QMainWindow):
         item = self.setup_table.itemAt(position)
         if not item: return
 
-        config = item.data(Qt.ItemDataRole.UserRole)
+        config = self._getVarConfig(item)
         if not config: return
-
-        if config.data_type in PICKABLE_TYPES:
+        if CaptureRegistry.containsType(config.data_type):
             menu = QMenu()
             capture_action = menu.addAction("Capture Data")
 
-            # 3. Connect Action
             # Use functools.partial to pass the specific config object to your capture tool
             action = menu.exec(self.setup_table.viewport().mapToGlobal(position))
 
             if action == capture_action:
                 self._startCaptureOverlay(item, config)
 
+    def _updateValueText(self, item: QTableWidgetItem, config: VariableConfig):
+        if config.data_type is bool:
+            item.setText("")
+            item.setData(Qt.ItemDataRole.UserRole, False)
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            item.setData(Qt.ItemDataRole.CheckStateRole, Qt.CheckState.Checked if config.value else Qt.CheckState.Unchecked)
+            return
+        else:
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+            item.setData(Qt.ItemDataRole.CheckStateRole, None)
+
+        font = item.font()
+        # Make the value look different based on if it's empty or not
+        if config.value is None:
+            item.setData(Qt.ItemDataRole.UserRole, True)
+            item.setText(EMPTY_VALUE_STR)
+            font.setItalic(True)
+            item.setFont(font)
+            item.setForeground(QBrush(QColor("gray")))
+        else:
+            item.setData(Qt.ItemDataRole.UserRole, False)
+            item.setText(GlobalTypeHandler.toString(config.value))
+            font.setItalic(False)
+            item.setFont(font)
+            item.setForeground(self.palette().text())
+
     # --- FUNCTIONALITY HOOKS ---
-    def addSetupItem(self, var_id: Hashable, config: VariableConfig):
-        """
-        Adds a row WITHOUT triggering the 'itemChanged' signal.
-        """
+    def addSetupItem(self, name: str, config: VariableConfig):
+        """ Adds a new row WITHOUT triggering the 'itemChanged' signal."""
         # Block signals so adding rows doesn't trigger "on_table_changed"
         self.setup_table.blockSignals(True)
 
         row = self.setup_table.rowCount()
+        config.row = row
         self.setup_table.insertRow(row)
 
         # Col 0: ID (Read only)
-        id_item = QTableWidgetItem(str(var_id))
-        id_item.setFlags(id_item.flags() ^ Qt.ItemFlag.ItemIsEditable)  # Remove edit flag
+        id_item = QTableWidgetItem(name)
+        id_item.setFlags(id_item.flags() ^ Qt.ItemFlag.ItemIsEditable)  # Toggle edit flag off
+        id_item.setData(Qt.ItemDataRole.UserRole, config)
         self.setup_table.setItem(row, 0, id_item)
 
+        # Refreshable stuff:
+
         # Col 1: Type (Read only)
-        type_item = QTableWidgetItem(GlobalTypeHandler.getDisplayName(config.data_type))
+        type_item = QTableWidgetItem()
         type_item.setFlags(type_item.flags() ^ Qt.ItemFlag.ItemIsEditable)
         self.setup_table.setItem(row, 1, type_item)
 
         # Col 2: Value
         val_item = QTableWidgetItem()
-        if config.data_type is bool:
-            val_item.setFlags(val_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-
-        if config.data_type is QRect:
-            val_item.setToolTip("Format: x, y, width, height | Right click to open action menu")
-        elif config.data_type is QPoint:
-            val_item.setToolTip("Format: x, y | Right click to open action menu")
-        else:
-            val_item.setToolTip(config.pick_hint)
-
         self.setup_table.setItem(row, 2, val_item)
-        val_item.setData(Qt.ItemDataRole.UserRole, config)
 
-        # Unblock signals, lol updating variable display unblocks
-        self._updateVariableDisplay(val_item)
+        # Refresh the view to update properties
+        self.refreshSetupItemView(config)
 
-        if config.data_type in PICKABLE_TYPES:
-            self.overlay.render_geometry.append(config)
+    def refreshSetupItemView(self, config: VariableConfig):
+        row = config.row
+        if row is None:
+            self.log(LogPacket(("Error while refreshing view for", config, "row could not be found."),
+                               task_id=-1, level=LogLevel.ERROR))
+            return
+
+        # Update data_type, hint, value
+        self.setup_table.blockSignals(True)
+        try:
+            value_item = self.setup_table.item(row, 2)
+            self._updateValueText(value_item, config)
+            _updateTypeItem(self.setup_table.item(row, 1), value_item, config)
+
+            # Remove or add to render geom
+            if CaptureRegistry.containsType(config.data_type):
+                self.overlay.render_geometry.add(config)
+            elif config in self.overlay.render_geometry:
+                self.overlay.render_geometry.remove(config)
+                if self.overlay.highlighted_config == config:
+                    self.overlay.highlighted_config = None
+                self.overlay.update()
+        finally:
+            self.setup_table.blockSignals(False)
 
     @staticmethod
     def _formatLogParts(packet: LogPacket):
@@ -317,10 +373,10 @@ class MainWindow(QMainWindow):
                 html_parts.append(item.to_html())
             else:
                 # Fallback: Use global casting
-                html_parts.append(GlobalTypeHandler.format(item))
+                html_parts.append(GlobalTypeHandler.toString(item))
 
-        # Join them with comma separated spaces
-        return ", ".join(html_parts)
+        # Join them with spaces like python print
+        return " ".join(html_parts)
 
     def log(self, payload):
         """Thread-safe logging helper"""
@@ -371,7 +427,7 @@ class MainWindow(QMainWindow):
         self._pending_capture_item = item
         self.hide()
         var_type = config.data_type
-        pick_hint = config.pick_hint
+        pick_hint = config.hint
         capture_mode = var_type
         if var_type is QRect:
             capture_mode = CaptureMode.REGION
@@ -380,15 +436,11 @@ class MainWindow(QMainWindow):
 
         self.overlay.startCapture(capture_mode, pick_hint)
 
-    def _updateVariableDisplay(self, val_item: QTableWidgetItem):
+    def _updateVariableDisplay(self, val_item: QTableWidgetItem, config: VariableConfig):
         """Update the widget item's display based on the config value"""
-        config: VariableConfig = val_item.data(Qt.ItemDataRole.UserRole)
         self.setup_table.blockSignals(True)
         try:
-            if config.data_type is bool:
-                val_item.setCheckState(Qt.CheckState.Checked if config.value else Qt.CheckState.Unchecked)
-            else:
-                val_item.setText(GlobalTypeHandler.format(config.value))
+            self._updateValueText(val_item, config)
         finally:
             self.setup_table.blockSignals(False)
 
@@ -397,8 +449,9 @@ class MainWindow(QMainWindow):
         value_item = self._pending_capture_item
         self._pending_capture_item = None
         if result:
-            value_item.data(Qt.ItemDataRole.UserRole).value = result # Update config data
-            self._updateVariableDisplay(value_item)  # Update local UI
+            config = self._getVarConfig(value_item)
+            config.value = result # Update config data
+            self._updateVariableDisplay(value_item, config)  # Update local UI
 
         # Hide the UI again
         self.overlay.setClickThrough(True)
@@ -438,7 +491,7 @@ class MainWindow(QMainWindow):
         self.paused = False
         self._updateStartBtnAndStatus("START [F6]","IDLE", 100)
         self.progress.setValue(0)
-        self.stop_signal.emit()
+        self.stop_signal.emit(False)
 
     def _updateStartBtnAndStatus(self, text: str, status_text: str, max_range: int):
         self.btn_start.setText(text)
@@ -449,7 +502,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent):
         # 1. Emit stop signal to kill any running macros
-        self.stop_signal.emit()
+        self.stop_signal.emit(True)
         self.overlay.destroy()
 
         # 2. TODO Save settings/variables to a JSON file here
@@ -457,6 +510,46 @@ class MainWindow(QMainWindow):
         # 3. Accept the event to let the window close
         event.accept()
 
+class SmartDelegate(QStyledItemDelegate):
+    def editorEvent(self, event, model, option, index):
+        # Handle left mouse clicks for booleans
+        if event.type() == QEvent.Type.MouseButtonRelease:
+            # Check if this item is actually a checkbox
+            current_state = index.data(Qt.ItemDataRole.CheckStateRole)
+            if current_state is not None:
+                new_state = Qt.CheckState.Unchecked if current_state == Qt.CheckState.Checked else Qt.CheckState.Checked
+                model.setData(index, new_state, Qt.ItemDataRole.CheckStateRole)
+
+                # Return True so Qt stops processing the event
+                return True
+
+        return super().editorEvent(event, model, option, index)
+
+    def setEditorData(self, editor, index):
+        # This function runs right before the user starts typing
+
+        # Check your existing UserRole
+        is_empty = index.data(Qt.ItemDataRole.UserRole)
+
+        if is_empty:
+            # If it's technically empty, start with a BLANK textbox instead of showing "<Empty>"
+            editor.setText("")
+        else:
+            # Otherwise, show the existing text normally
+            super().setEditorData(editor, index)
+
+    def setModelData(self, editor, model, index):
+        # This runs when user finishes typing (presses Enter)
+        new_text = editor.text()
+
+        if new_text == "":
+            # User cleared the box -> Mark as Empty
+            model.setData(index, True, Qt.ItemDataRole.UserRole)  # Update flag
+        else:
+            # User typed something -> Mark as Not Empty
+            model.setData(index, False, Qt.ItemDataRole.UserRole)
+            # Try to save the actual text
+            model.setData(index, new_text, Qt.ItemDataRole.DisplayRole)
 
 class LogWidget(QTextBrowser):
     def __init__(self):
@@ -530,22 +623,3 @@ class TracebackDialog(QDialog):
         cursor = self.text_area.textCursor()
         cursor.clearSelection()
         self.text_area.setTextCursor(cursor)
-
-# --- ENTRY POINT (For testing visual look) ---
-if __name__ == "__main__":
-    debug_vars = {}
-    window = MainWindow()
-
-    def _addDummyVariable(key: Hashable, data_type: Pickable | object, default_val: object = None,
-                    pick_hint: str = None):
-        config = VariableConfig(data_type, default_val, pick_hint)
-        debug_vars[key] = config
-        window.addSetupItem(key, config)
-
-    # Add dummy data to show off the table
-    _addDummyVariable("farm_location", int, 1)
-    _addDummyVariable("loop_delay", CaptureMode.REGION, None, "Burger")
-    _addDummyVariable("enable_combat", bool, True)
-
-    window.show()
-    sys.exit(window.app.exec())

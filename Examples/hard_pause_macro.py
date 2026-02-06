@@ -84,7 +84,7 @@ def runSafeTask(controller):
     yield from task.run(controller)
 
 if __name__ == '__main__':
-    creator = MacroCreator()
+    creator = MacroCreator("Database Updater Macro")
 
     creator.addRunTask(runSafeTask)
 

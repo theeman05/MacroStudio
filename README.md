@@ -29,7 +29,7 @@ The Engine features a robust **Global Type Registry** that bridges the gap betwe
 
 * **Smart UI Handling:** Users see friendly names (e.g., "Screen Region") instead of raw class names (e.g., `PySide6.QtCore.QRect`).
 * **Input Validation:** The UI provides immediate visual feedback (red borders/tooltips) if user input doesn't match your parser's rules.
-* **Automatic Serialization:** The engine knows how to save and load your object from config files. **COMING SOON**
+* **Automatic Serialization:** The engine knows how to save and load your object from config files.
 
 ---
 
@@ -126,7 +126,7 @@ from macro_creator import MacroCreator
 from Examples.basic_macro import BasicMacro
 
 if __name__ == "__main__":
-    creator = MacroCreator()
+    creator = MacroCreator(macro_name="Basic Macro Example")
 
     # Add steps and tasks from BasicMacro
     BasicMacro(creator)
@@ -160,14 +160,17 @@ if __name__ == "__main__":
 In this example, if the task is Hard Paused, the loop crashes, and the code after will not run.
 
 ```python
-counter = 0
-while counter < 10:
-    # DANGER: If the task is Hard Paused, this line raises MacroHardPauseException.
-    # Since it isn't caught, it exits the 'while' loop immediately!
-    yield from macroSleep(1)
-    counter += 1
-    
-print("Task finished!") # <--- This will not run on resuming (Wrong!)
+from macro_creator import macroSleep
+
+def taskToTen():
+    counter = 0
+    while counter < 10:
+        # DANGER: If the task is Hard Paused, this line raises MacroHardPauseException.
+        # Since it isn't caught, it exits the 'while' loop immediately!
+        yield from macroSleep(1)
+        counter += 1
+        
+    print("Task finished!") # <--- This will not run on resuming (Wrong!)
 
 ```
 
@@ -176,19 +179,22 @@ print("Task finished!") # <--- This will not run on resuming (Wrong!)
 You must catch the exception and delegate control to `macroWaitForResume()`.
 
 ```python
-counter = 0
-while counter < 10:
-    try:
-        # Try to sleep normally
-        yield from macroSleep(1) 
-        
-    except MacroHardPauseException:
-        # CAUGHT: User paused. Wait here until they click Resume.
-        # When this returns, execution loops back naturally.
-        yield from macroWaitForResume()
-    counter += 1
+from macro_creator import MacroHardPauseException, macroSleep, macroWaitForResume
 
-print("Thread finished!") # <--- Only runs when thread is ACTUALLY done.
+def taskToTen():
+    counter = 0
+    while counter < 10:
+        try:
+            # Try to sleep normally
+            yield from macroSleep(1) 
+            
+        except MacroHardPauseException:
+            # CAUGHT: User paused. Wait here until they click Resume.
+            # When this returns, execution loops back naturally.
+            yield from macroWaitForResume()
+        counter += 1
+    
+    print("Thread finished!") # <--- Only runs when thread is ACTUALLY done.
 
 ```
 
@@ -205,22 +211,23 @@ print("Thread finished!") # <--- Only runs when thread is ACTUALLY done.
 In this example, the user catches `Exception` (which includes `MacroAbortException`), logs it, and **continues the loop**. The thread refuses to die.
 
 ```python
-# Bad Pattern: Swallowing the Stop signal
-f = open("log.txt", "w")
-
-while True:
-    try:
-        # If user clicks STOP, this raises MacroAbortException
-        controller.sleep(1)
-        do_work()
-        
-    except Exception as e:
-        # DANGER: This catches MacroAbortException too!
-        # The code logs the error but the loop keeps spinning.
-        print(f"Error occurred: {e}")
-
-# This line is never reached if the loop doesn't break
-f.close() 
+def openLogTask(controller):
+    # Bad Pattern: Swallowing the Stop signal
+    f = open("log.txt", "w")
+    
+    while True:
+        try:
+            # If user clicks STOP, this raises MacroAbortException
+            controller.sleep(1)
+            do_work()
+            
+        except Exception as e:
+            # DANGER: This catches MacroAbortException too!
+            # The code logs the error but the loop keeps spinning.
+            print(f"Error occurred: {e}")
+    
+    # This line is never reached if the loop doesn't break
+    f.close() 
 
 ```
 
@@ -229,22 +236,23 @@ f.close()
 Use `finally` to guarantee cleanup. You do not need to explicitly catch `MacroAbortException` because you *want* it to propagate up and stop the thread.
 
 ```python
-# Good Pattern: Resource safety
-f = open("log.txt", "w")
-
-try:
-    while True:
-        # If user clicks STOP, exception triggers cleanup immediately
-        controller.sleep(1)
-        do_work()
-        
-finally:
-    # This block GUARANTEES execution:
-    # 1. If the loop finishes normally
-    # 2. If a crash happens
-    # 3. If the user clicks STOP (MacroAbortException)
-    print("Closing file...")
-    f.close()
+def openLogTask(controller):
+    # Good Pattern: Resource safety
+    f = open("log.txt", "w")
+    
+    try:
+        while True:
+            # If user clicks STOP, exception triggers cleanup immediately
+            controller.sleep(1)
+            do_work()
+            
+    finally:
+        # This block GUARANTEES execution:
+        # 1. If the loop finishes normally
+        # 2. If a crash happens
+        # 3. If the user clicks STOP (MacroAbortException)
+        print("Closing file...")
+        f.close()
 
 ```
 
@@ -299,14 +307,6 @@ The engine comes pre-configured with handlers for standard and GUI types:
 ## 🔮 Roadmap & Coming Soon
 
 I am actively working to make this the ultimate automation platform. Here is what is coming next:
-
-### 💾 Variable Serialization & State Persistence
-
-Currently, task variables live entirely in memory; if you close the app, the data is lost. I will be building a powerful serialization layer that allows the engine to snapshot and save the exact state of your variables to the disk.
-
-**Planned Capabilities:**
-
-* **Variable Reloading:** If the application (or your computer) crashes mid-task, the engine will be able to reload the task with all local variables restored to their last known state. `counter=500` remains `500`, rather than resetting to `0`.
 
 ### 🎥 Visual Task Recorder (No-Code)
 

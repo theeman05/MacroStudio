@@ -2,7 +2,7 @@ from macro_creator import MacroCreator
 from Examples.basic_macro import BasicMacro
 
 if __name__ == "__main__":
-    creator = MacroCreator()
+    creator = MacroCreator("Macro Main Tester")
 
     # Add steps and tasks from BasicMacro
     BasicMacro(creator)

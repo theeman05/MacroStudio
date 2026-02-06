@@ -57,7 +57,7 @@ class TransparentOverlay(QWidget):
 
         self.show()
         self.setClickThrough(True)
-        self.render_geometry = []
+        self.render_geometry = set()
 
         self.current_mode: CaptureMode | None = None
         self.start_pos = None
@@ -206,24 +206,22 @@ class TransparentOverlay(QWidget):
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             red_pen = QPen(QColor(255, 0, 0, 180), 2)
             painter.setPen(red_pen)
-            render_geom_dict = self.render_geometry
-            if render_geom_dict:
-                highlighted_config = self.highlighted_config
-                for obj_conf in render_geom_dict:
-                    val = obj_conf.value
-                    if val:
-                        if highlighted_config == obj_conf:
-                            painter.setPen(highlight_pen)
-                            painter.setBrush(highlight_brush)
+            highlighted_config = self.highlighted_config
+            for obj_conf in self.render_geometry:
+                val = obj_conf.value
+                if val:
+                    if highlighted_config == obj_conf:
+                        painter.setPen(highlight_pen)
+                        painter.setBrush(highlight_brush)
 
-                        if isinstance(val, QPoint):
-                            painter.drawEllipse(val, 10, 10)
-                        elif isinstance(val, QRect):
-                            painter.drawRect(val)
-                        else:
-                            print(f'UNEXPECTED OBJECT {type(val)} FOUND WHEN DRAWING')
+                    if isinstance(val, QPoint):
+                        painter.drawEllipse(val, 10, 10)
+                    elif isinstance(val, QRect):
+                        painter.drawRect(val)
+                    else:
+                        print(f'UNEXPECTED OBJECT {type(val)} FOUND WHEN DRAWING')
 
-                        if highlighted_config == obj_conf:
-                            # Reset the brush
-                            painter.setPen(red_pen)
-                            painter.setBrush(QColor(0, 0, 0, 0))
+                    if highlighted_config == obj_conf:
+                        # Reset the brush
+                        painter.setPen(red_pen)
+                        painter.setBrush(QColor(0, 0, 0, 0))
