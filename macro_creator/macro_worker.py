@@ -7,6 +7,7 @@ from .pause_state import PauseState
 
 if TYPE_CHECKING:
     from .task_controller import TaskController
+    from .engine import MacroCreator
 
 
 def _handleTasksOnHard(controller: "TaskController", notified_tasks: set):
@@ -26,10 +27,11 @@ class MacroWorker(QThread):
     finished_signal = Signal()
     log_signal = Signal(object) # The log message
 
-    def __init__(self):
+    def __init__(self, engine: "MacroCreator"):
         super().__init__()
         self.pause_state = PauseState()
         self.running = False
+        self.engine = engine
 
         self._mutex = QMutex()
         self._task_heap = []

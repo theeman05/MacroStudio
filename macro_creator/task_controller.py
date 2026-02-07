@@ -1,7 +1,7 @@
 import inspect
 import time
 from PySide6.QtCore import QMutex, QMutexLocker
-from typing import TYPE_CHECKING, Generator
+from typing import TYPE_CHECKING, Generator, Hashable
 
 from .pause_state import PauseState
 from .types_and_enums import TaskFunc, MacroAbortException, MacroHardPauseException, LogLevel
@@ -246,6 +246,16 @@ class TaskController:
     def logError(self, error_msg, trace=""):
         """Sends a specialized LogErrorPacket object to the ui."""
         self._scheduler.logError(error_msg, trace, self._id)
+
+    def getVar(self, key: Hashable):
+        """
+        Get the value for a setup variable.
+        Args:
+            key: The key that the variable should be stored under.
+        Returns:
+            The value for a setup variable if present or None.
+        """
+        return self._scheduler.engine.getVar(key)
 
     def __iter__(self):
         return self

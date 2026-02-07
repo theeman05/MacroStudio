@@ -77,7 +77,7 @@ When you add a task, the engine returns a **Controller**. You can use this objec
         # Log directly to the ui
         controller.log("I am going to sleep")
         # Get a user defined variable from the engine
-        if self.engine.getVar("Sleep My Task"):
+        if controller.getVar("Sleep My Task"):
             self.worker_ctrl.pause() # Worker stops immediately
             yield from macroSleep(2)
             self.worker_ctrl.resume() # Worker continues
