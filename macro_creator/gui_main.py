@@ -9,7 +9,7 @@ from PySide6.QtGui import QCloseEvent, QBrush, QColor, QFont, QDesktopServices, 
 from PySide6.QtCore import Qt, Signal, QTimer, QUrl, QEvent
 from pynput import keyboard
 
-from .capture_type_registry import CaptureRegistry
+from .capture_type_registry import GlobalCaptureRegistry
 from .type_handler import GlobalTypeHandler
 from .overlay import TransparentOverlay
 from .types_and_enums import LogPacket, LogLevel, LogErrorPacket
@@ -63,9 +63,9 @@ def _flashError(item):
     QTimer.singleShot(250, lambda: item.setBackground(original_background))
 
 def _updateTypeItem(type_item: QTableWidgetItem, value_item: QTableWidgetItem, config: VariableConfig):
-    capture_mode = CaptureRegistry.getModeFromType(config.data_type)
+    capture_mode = GlobalCaptureRegistry.getModeFromType(config.data_type)
     if capture_mode:
-        tip = f"{CaptureRegistry.get(capture_mode).tip} | Right click to open action menu and capture"
+        tip = f"{GlobalCaptureRegistry.get(capture_mode).tip} | Right click to open action menu and capture"
     else:
         tip = config.hint or "Manually edit this value."
 
@@ -244,13 +244,13 @@ class MainWindow(QMainWindow):
             if not success:
                 self._updateVariableDisplay(item, var_config)
                 _flashError(item)
-            elif CaptureRegistry.containsType(var_config.data_type) and var_config.value:
+            elif GlobalCaptureRegistry.containsType(var_config.data_type) and var_config.value:
                 self.overlay.update()
 
     def _onItemHovered(self, item):
         config = self._getVarConfig(item)
         prev_highlighted = self.overlay.highlighted_config
-        self.overlay.highlighted_config = config if (config and CaptureRegistry.containsType(config.data_type)) else None
+        self.overlay.highlighted_config = config if (config and GlobalCaptureRegistry.containsType(config.data_type)) else None
         # If the config changed, update the overlay
         if prev_highlighted != self.overlay.highlighted_config:
             self.overlay.update()
@@ -274,7 +274,7 @@ class MainWindow(QMainWindow):
         config = self._getVarConfig(item)
         if not config: return
 
-        capture_mode = CaptureRegistry.getModeFromType(config.data_type)
+        capture_mode = GlobalCaptureRegistry.getModeFromType(config.data_type)
         if capture_mode:
             menu = QMenu()
             capture_action = menu.addAction("Capture Data")
@@ -285,7 +285,7 @@ class MainWindow(QMainWindow):
             if action == capture_action:
                 self._pending_capture_item = item
                 self.hide()
-                CaptureRegistry.get(capture_mode).capture_handler(self, config)
+                GlobalCaptureRegistry.get(capture_mode).capture_handler(self, config)
 
 
     def _updateValueText(self, item: QTableWidgetItem, config: VariableConfig):
@@ -359,7 +359,7 @@ class MainWindow(QMainWindow):
             _updateTypeItem(self.setup_table.item(row, 1), value_item, config)
 
             # Remove or add to render geom
-            if CaptureRegistry.containsType(config.data_type):
+            if GlobalCaptureRegistry.containsType(config.data_type):
                 self.overlay.render_geometry.add(config)
             elif config in self.overlay.render_geometry:
                 self.overlay.render_geometry.remove(config)
@@ -466,11 +466,11 @@ class MainWindow(QMainWindow):
     def startMacroVisuals(self):
         self.running = True
         self.paused = False
-        self._updateStartBtnAndStatus("PAUSE [F6]","RUNNING", 0)
+        self._updateStartBtnAndStatus("HARD PAUSE [F6]","RUNNING", 0)
 
     def pauseMacroVisuals(self):
         self.paused = True
-        self._updateStartBtnAndStatus("RESUME","PAUSED", 100)
+        self._updateStartBtnAndStatus("RESUME [F6]","PAUSED", 100)
         self.progress.setValue(100)
 
     def resumeMacroVisuals(self):

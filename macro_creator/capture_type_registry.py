@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from .gui_main import MainWindow
     from .variable_config import VariableConfig
 
-class CaptureRegistry:
+class GlobalCaptureRegistry:
     _definitions = {} # Maps Mode -> Definition
     _type_map = {}  # Maps PythonType -> Mode
 
@@ -33,7 +33,7 @@ class CaptureRegistry:
     def containsMode(cls, mode: CaptureMode) -> bool:
         """
         Checks if a mode is explicitly registered.
-        Usage: if CaptureRegistry.contains(mode):
+        Usage: if GlobalCaptureRegistry.contains(mode):
         """
         return mode in cls._definitions
 
@@ -41,23 +41,23 @@ class CaptureRegistry:
     def containsType(cls, type_class: type) -> bool:
         """
         Checks if a mode is explicitly registered.
-        Usage: if CaptureRegistry.contains(mode):
+        Usage: if GlobalCaptureRegistry.contains(mode):
         """
         return type_class in cls._type_map
 
 def captureOverlayGeneric(window: "MainWindow", config: "VariableConfig"):
     """Standard handler for modes that uses the existing Overlay system."""
-    window.overlay.startCapture(CaptureRegistry.getModeFromType(config.data_type), config.hint)
+    window.overlay.startCapture(GlobalCaptureRegistry.getModeFromType(config.data_type), config.hint)
 
 
-CaptureRegistry.register(CaptureTypeDef(
+GlobalCaptureRegistry.register(CaptureTypeDef(
     mode=CaptureMode.POINT,
     type_class=QPoint,
     tip="Format: x, y",
     capture_handler=captureOverlayGeneric,
 ))
 
-CaptureRegistry.register(CaptureTypeDef(
+GlobalCaptureRegistry.register(CaptureTypeDef(
     mode=CaptureMode.REGION,
     type_class=QRect,
     tip="Format: x, y, width, height",

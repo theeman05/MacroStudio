@@ -4,7 +4,7 @@ from typing import Hashable
 
 from .type_handler import GlobalTypeHandler
 from .types_and_enums import CaptureMode
-from .capture_type_registry import CaptureRegistry
+from .capture_type_registry import GlobalCaptureRegistry
 
 class VariableConfig:
     def __init__(self, data_type: CaptureMode | type, default_val=None, pick_hint: str=None):
@@ -15,7 +15,7 @@ class VariableConfig:
             default_val: The value on initializing the config
             pick_hint: The hint to display when we are hovering over the object (if pickable, when selecting)
         """
-        self.data_type = CaptureRegistry.get(data_type).type_class if CaptureRegistry.containsMode(data_type) else data_type
+        self.data_type = GlobalCaptureRegistry.get(data_type).type_class if GlobalCaptureRegistry.containsMode(data_type) else data_type
         self.value = default_val
         self.hint = pick_hint
         self.row: int | None = None # The row in the UI

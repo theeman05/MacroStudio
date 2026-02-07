@@ -8,7 +8,7 @@ from .gui_main import MainWindow
 from .macro_worker import MacroWorker
 from .variable_config import VariableConfig
 from .profile_manager import ProfileManager
-from .capture_type_registry import CaptureRegistry
+from .capture_type_registry import GlobalCaptureRegistry
 
 class MacroCreator:
     def __init__(self, macro_name: str):
@@ -57,7 +57,7 @@ class MacroCreator:
                 config.hint = pick_hint
                 has_changes = True
 
-            data_type = CaptureRegistry.get(data_type).type_class if CaptureRegistry.containsMode(data_type) else data_type
+            data_type = GlobalCaptureRegistry.get(data_type).type_class if GlobalCaptureRegistry.containsMode(data_type) else data_type
 
             # If data types differ, or there's no value for config, overwrite the previous value and data type
             if (data_type is not config.data_type) or (config.value is None and default_val != config.value):
