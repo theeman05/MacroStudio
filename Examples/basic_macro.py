@@ -1,5 +1,5 @@
 import time
-from macro_creator import macroSleep
+from macro_creator import taskSleep
 
 
 # 1. Define a standalone task function
@@ -10,7 +10,7 @@ def anotherTask(controller):
 
     # This loop runs until the task finishes
     # If paused externally, macroSleep handles the waiting automatically.
-    yield from macroSleep(5)
+    yield from taskSleep(5)
 
     elapsed = time.time() - start_time
     controller.log(f"Secondary task finished! Total Elapsed: {elapsed:.2f}s")
@@ -35,17 +35,17 @@ class BasicMacro:
         controller.log("Manager: Starting sequence...")
 
         # Let the other task run for 1 second
-        yield from macroSleep(1)
+        yield from taskSleep(1)
 
         controller.log("Manager: ⏸️ Pausing the secondary task now!")
         self.other_task_ctrl.pause()
 
         # Wait while the other task is frozen
-        yield from macroSleep(2)
+        yield from taskSleep(2)
 
         controller.log("Manager: ▶️ Resuming the secondary task!")
         self.other_task_ctrl.resume()
 
         # Wait for everything to finish
-        yield from macroSleep(2)
+        yield from taskSleep(2)
         controller.log("Manager: Sequence complete.")

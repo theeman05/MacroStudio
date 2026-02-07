@@ -34,12 +34,12 @@ class LogErrorPacket:
     traceback: str
     task_id: int
 
-class MacroAbortException(Exception):
+class TaskAbortException(BaseException):
     """Raised when the macro is stopped normally."""
     pass
 
-class MacroHardPauseException(Exception):
-    """Raised when the user triggers a hard stop/pause that requires cleanup."""
+class TaskInterruptedException(BaseException):
+    """Raised when the user triggers an interrupted pause."""
     pass
 
 TaskFunc: TypeAlias = Callable[..., Generator | None]

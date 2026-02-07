@@ -18,9 +18,9 @@ def _handleTasksOnHard(controller: "TaskController", notified_tasks: set):
     """
     was_in_notified = controller in notified_tasks
     notified_tasks.add(controller)
-    if not controller.pause_state.is_hard:
+    if not controller.pause_state.interrupted:
         # Throw if not in notified already
-        return was_in_notified or controller.throwHardPauseError()
+        return was_in_notified or controller.throwInterruptedError()
     return False
 
 class MacroWorker(QThread):
@@ -79,7 +79,7 @@ class MacroWorker(QThread):
 
     def _onRunEnd(self):
         # Handle when run loop ends due to pausing or stopping.
-        if self.pause_state.is_hard:
+        if self.pause_state.interrupted:
             # If our pause state is hard before stopping, we need to send our exception to all
             # tasks that were going to run, or aren't hard paused already.
             notified_tasks = set()
@@ -182,7 +182,7 @@ class MacroWorker(QThread):
         Returns:
             The duration paused for in seconds or ``None`` if not paused.
         """
-        was_hard_pause = self.pause_state.is_hard
+        was_hard_pause = self.pause_state.interrupted
         elapsed = self.pause_state.clear() if (self.running and not self.isRunning()) else None
         if elapsed is not None:
             elapsed_on_soft = elapsed if was_hard_pause is False else None
@@ -203,11 +203,11 @@ class MacroWorker(QThread):
     def isPaused(self):
         return self.pause_state.active
 
-    def pause(self, hard: bool):
+    def pause(self, interrupt: bool):
         """
         Pauses all task execution.
         Args:
-            hard: Controls how the pause is handled.
+            interrupt: Controls how the pause is handled.
 
                 * ``True``: Interrupts the task to **release keys** and **clean up resources** safely.
                 * ``False``: **Freezes** the task in place (keys remain held down).
@@ -215,7 +215,7 @@ class MacroWorker(QThread):
              ``True`` if paused successfully, ``False`` if the engine has stopped abruptly.
         """
         if self.running and not self.isPaused():
-            self.pause_state.trigger(hard)
+            self.pause_state.trigger(interrupt)
             # Wait for loop to exit
             self.wait()
             return self.running

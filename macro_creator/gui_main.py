@@ -466,7 +466,7 @@ class MainWindow(QMainWindow):
     def startMacroVisuals(self):
         self.running = True
         self.paused = False
-        self._updateStartBtnAndStatus("HARD PAUSE [F6]","RUNNING", 0)
+        self._updateStartBtnAndStatus("INTERRUPTED PAUSE [F6]","RUNNING", 0)
 
     def pauseMacroVisuals(self):
         self.paused = True
@@ -475,7 +475,7 @@ class MainWindow(QMainWindow):
 
     def resumeMacroVisuals(self):
         self.paused = False
-        self._updateStartBtnAndStatus("HARD PAUSE [F6]","RUNNING", 0)
+        self._updateStartBtnAndStatus("INTERRUPTED PAUSE [F6]","RUNNING", 0)
 
     def stopMacroVisuals(self):
         self.running = False

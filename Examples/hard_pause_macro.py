@@ -6,11 +6,11 @@ that correctly handles the Engine's "Hard Pause" and "Stop" signals.
 
 Key Concepts:
 1. Persistence: Using a class allows you to store state (self.counter) easily.
-2. Hard Pause Safety: catching MacroHardPauseException to prevent loop breakage.
+2. Hard Pause Safety: catching TaskInterruptedException to prevent loop breakage.
 3. Cleanup: Using 'finally' to ensure resources are closed on Stop.
 """
 
-from macro_creator import MacroCreator, MacroHardPauseException, macroSleep, macroWaitForResume
+from macro_creator import MacroCreator, TaskInterruptedException, taskSleep, taskWaitForResume
 
 class DatabaseUpdaterTask:
     """
@@ -26,7 +26,7 @@ class DatabaseUpdaterTask:
         """Simulate opening a resource."""
         controller.log("🔌 Connecting to database...")
         self.is_connected = True
-        yield from macroSleep(0.5)  # Slight delay to simulate connection time
+        yield from taskSleep(0.5)  # Slight delay to simulate connection time
 
     def disconnectDB(self, controller):
         """Simulate closing a resource."""
@@ -51,17 +51,17 @@ class DatabaseUpdaterTask:
                     controller.log(f"Processing record #{self.records_processed}...")
 
                     # Simulate work (takes 1 second)
-                    yield from macroSleep(1.0)
+                    yield from taskSleep(1.0)
 
                     self.records_processed += 1
 
-                except MacroHardPauseException:
+                except TaskInterruptedException:
                     # 2. HANDLE PAUSE
                     # The user clicked "Pause". We must explicitly wait here.
                     controller.log("⏸️ Task Paused safely. Waiting for resume...")
 
                     # This yields control until the task is resumed
-                    yield from macroWaitForResume()
+                    yield from taskWaitForResume()
 
                     controller.log("▶️ Resuming task loop...")
                     # When this returns, the loop continues naturally at the top
@@ -73,7 +73,7 @@ class DatabaseUpdaterTask:
             # This block runs if:
             # - The loop finishes normally.
             # - The script crashes (Error).
-            # - The user clicks STOP (MacroAbortException).
+            # - The user clicks STOP (TaskAbortException).
             self.disconnectDB(controller)
 
 

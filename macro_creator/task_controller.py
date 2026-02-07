@@ -4,7 +4,7 @@ from PySide6.QtCore import QMutex, QMutexLocker
 from typing import TYPE_CHECKING, Generator, Hashable
 
 from .pause_state import PauseState
-from .types_and_enums import TaskFunc, MacroAbortException, MacroHardPauseException, LogLevel
+from .types_and_enums import TaskFunc, TaskAbortException, TaskInterruptedException, LogLevel
 
 if TYPE_CHECKING:
     from .macro_worker import MacroWorker
@@ -35,37 +35,37 @@ class TaskController:
     def cid(self):
         return self._id
 
-    def pause(self, hard=False):
+    def pause(self, interrupt=False):
         """
         If not paused already, halts the task from running its next step.
         Args:
-            hard: Controls how the pause is handled.
+            interrupt: Controls how the pause is handled.
 
                 * ``True``: Interrupts the task to **release keys** and **clean up resources** safely.
-                * ``False``: **Freezes** the task in place (keys remain held down).
+                * ``False`` (Default): **Freezes** the task in place (keys remain held down).
          Returns:
              ``True`` if paused successfully, ``False`` if the engine has stopped abruptly.
         """
         if not self.pause_state.active:
-            self.pause_state.trigger(hard)
-            if not hard or self.throwHardPauseError():
+            self.pause_state.trigger(interrupt)
+            if not interrupt or self.throwInterruptedError():
                 return True
             self._scheduler.logControllerAborted(self)
             return False
 
         return True
 
-    def throwHardPauseError(self):
+    def throwInterruptedError(self):
         """
-        Safely attempts to throw a hard pause error onto the current generator.
+        Safely attempts to throw a ``TaskInterruptedException`` onto the current generator.
         Returns:
             ``True`` if the task is now hard paused, ``False`` if it was stopped abruptly.
         """
         with QMutexLocker(self._mutex):
             if not self._generator: return False
             try:
-                self._generator.throw(MacroHardPauseException)
-            except (StopIteration, MacroHardPauseException):
+                self._generator.throw(TaskInterruptedException)
+            except (StopIteration, TaskInterruptedException):
                 # If there's nothing left in our generator, the task has been stopped; cleanup
                 self._generator = None
                 self.pause_state.clear()
@@ -84,7 +84,7 @@ class TaskController:
         Returns:
             The duration paused for in seconds or ``None`` if not paused.
         """
-        was_hard_pause = self.pause_state.is_hard
+        was_hard_pause = self.pause_state.interrupted
         elapsed = self.pause_state.clear() if self._scheduler.running else None
         if elapsed is not None:
             # Increase version to discard previously scheduled generator
@@ -161,7 +161,7 @@ class TaskController:
     def _waitWhileSoftPaused(self):
         while self.isPaused() or self._scheduler.isPaused():
             # Check for Hard Pause/Stop inside the pause loop so we don't get stuck
-            if not self.isRunning() or self.pause_state.is_hard or self._scheduler.pause_state.is_hard:
+            if not self.isRunning() or self.pause_state.interrupted or self._scheduler.pause_state.interrupted:
                 return  # Break out so the main sleep loop can handle the Exception raise
 
             time.sleep(0.1)  # Low CPU usage wait
@@ -172,8 +172,8 @@ class TaskController:
         Args:
             duration: Duration to sleep the thread for in seconds.
         Raises:
-            MacroAbortException: If stopped while sleeping.
-            MacroHardPauseException: If hard-paused while sleeping.
+            TaskAbortException: If stopped while sleeping.
+            TaskInterruptedException: If interrupted while sleeping.
         """
         if duration <= 0:
             return
@@ -183,11 +183,11 @@ class TaskController:
 
         while True:
             # Check for "Hard Pause" (Stop with Cleanup)
-            if self.pause_state.is_hard or self._scheduler.pause_state.is_hard:
-                raise MacroHardPauseException("Hard Pause triggered")
+            if self.pause_state.interrupted or self._scheduler.pause_state.interrupted:
+                raise TaskInterruptedException("Hard Pause triggered")
 
             if not self.isRunning():
-                raise MacroAbortException("Task stopped.")
+                raise TaskAbortException("Task stopped.")
 
             # Check for "Soft Pause" (Resumable)
             if self.isPaused() or self._scheduler.isPaused():
@@ -222,17 +222,17 @@ class TaskController:
 
     def waitForResume(self):
         """
-        Blocks the thread **ONLY** if the system or this task is in a Hard Pause (Safety stop).
+        Blocks the thread **ONLY** if the system or this task is in an interrupted pause.
         If the task is just 'Soft Paused' (logic wait), this returns immediately.
         Raises:
-            MacroAbortException: If stopped while waiting.
+            TaskAbortException: If stopped while waiting.
         """
-        while self.isRunning() and (self.pause_state.is_hard or self._scheduler.pause_state.is_hard):
+        while self.isRunning() and (self.pause_state.interrupted or self._scheduler.pause_state.interrupted):
             time.sleep(0.1)  # Low CPU usage wait
 
         # If one of the two are no longer running, throw abort exception
         if not (self._scheduler.isRunning() and self.isRunning()):
-            raise MacroAbortException("Worker stopped while waiting for resume.")
+            raise TaskAbortException("Worker stopped while waiting for resume.")
 
     def log(self, *args, level: LogLevel=LogLevel.INFO):
         """

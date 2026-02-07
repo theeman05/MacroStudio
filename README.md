@@ -38,17 +38,17 @@ The Engine features a robust **Global Type Registry** that bridges the gap betwe
 ### 1. Create a Standard Task (Generators)
 The most efficient way to write tasks is using Python Generators. This allows the engine to run hundreds of tasks simultaneously on a single thread.
 
-* **Key Rule:** Use `yield from macroSleep(seconds)` instead of `time.sleep()` in standard tasks.
+* **Key Rule:** Use `yield from taskSleep(seconds)` instead of `time.sleep()` in standard tasks.
 
 ```python
-from macro_creator import macroSleep
+from macro_creator import taskSleep
 
 
 def my_task():
     # Can print to the python terminal
     print("Task starting...")
     # Engine runs other tasks while this waits
-    yield from macroSleep(1)
+    yield from taskSleep(1)
     print("Task resumed!")
 
 
@@ -62,7 +62,7 @@ class BasicMacro:
 
 ### 2. Controlling Tasks
 
-When you add a task, the engine returns a **Controller**. You can use this object to pause, resume, or stop other tasks dynamically.
+When you add a task, the engine returns a **Task Controller**. You can use this object to pause, resume, or stop other tasks dynamically.
 
 ```python
     def __init__(self, macro_creator):
@@ -79,7 +79,7 @@ When you add a task, the engine returns a **Controller**. You can use this objec
         # Get a user defined variable from the engine
         if controller.getVar("Sleep My Task"):
             self.worker_ctrl.pause() # Worker stops immediately
-            yield from macroSleep(2)
+            yield from taskSleep(2)
             self.worker_ctrl.resume() # Worker continues
 
 ```
@@ -92,7 +92,7 @@ Sometimes you need to run blocking code (like heavy calculations or network requ
 
 ```python
 import threading
-from macro_creator import macroSleep, macroRunTaskInThread
+from macro_creator import taskSleep, taskAwaitThread
 
 
 # 1. Define the function to run in the thread
@@ -102,11 +102,13 @@ def heavy_lifting(controller):
     controller.sleep(5)
     print("Thread finished work.")
 
+
 def launcher(controller):
     # Create and start thread task with the argument being the task controller
     controller.log("Starting background work...")
     # Yield while the thread task is running
-    yield from macroRunTaskInThread(heavy_lifting, controller=controller)
+    yield from taskAwaitThread(heavy_lifting, controller=controller)
+
 
 class ThreadMacro:
     def __init__(self, macro_creator):
@@ -146,113 +148,112 @@ if __name__ == "__main__":
 
 ---
 
-### ⚠️ Critical Rule: Handling Hard Pauses When Sleeping Tasks
+### 🛡️ Handling Control Flow: Pauses & Stops
 
-**Rule:** When a task yields time back to the engine, you **must** wrap your sleep calls in a `try/except` block to handle `MacroHardPauseException`.
+The Engine uses exceptions to control your tasks. You must handle these correctly to ensure your macro pauses and stops safely when the user expects it to.
 
-**Reason:** The Engine uses `MacroHardPauseException` to interrupt execution immediately when a controller or the engine is hard paused.
+---
 
-* **If you catch it:** Your code pauses, waits to resume, and then continues like normal.
-* **If you DO NOT catch it:** The exception bubbles up, **returning immediately**. Your task will mistakenly treat a "Pause" as a "Stop/Cancel" and exit the loop prematurely.
+#### ⚠️ 1. Handling Task Interruptions
 
-#### ❌ Incorrect Implementation (Broken on Hard Pause)
+**The Exception:** `TaskInterruptedException`
+**The Scenario:** When the user interrupts a task, the engine immediately interrupts the current action (like a long sleep) to release keys and clean up.
 
-In this example, if the task is Hard Paused, the loop crashes, and the code after will not run.
+* **If you DO NOT catch it:** The exception bubbles up and exits your task. Your loop will terminate prematurely.
+* **If you DO catch it:** You can save the state, yield a wait command, and then resume the loop when the user is ready.
+
+**✅ Correct Pattern: The Resumable Loop**
+To make a robust loop that survives an interruption, wrap your logic in a `try/except` block and delegate control to `taskWaitForResume`.
 
 ```python
-from macro_creator import macroSleep
+from macro_creator import TaskInterruptedException, taskSleep, taskWaitForResume
 
-def taskToTen():
+def task_count_to_ten():
     counter = 0
     while counter < 10:
-        # DANGER: If the task is Hard Paused, this line raises MacroHardPauseException.
-        # Since it isn't caught, it exits the 'while' loop immediately!
-        yield from macroSleep(1)
-        counter += 1
+        try:
+            # 1. Try to sleep normally
+            yield from taskSleep(1)
+
+        except TaskInterruptedException:
+            # 2. INTERRUPTED! The task was interrupted while paused.
+            # We yield to the pause handler so the engine waits here.
+            yield from taskWaitForResume()
+            
+            # 3. When we return here, the loop continues naturally.
         
-    print("Task finished!") # <--- This will not run on resuming (Wrong!)
+        counter += 1
+
+    print("Task finished successfully!")
 
 ```
 
-#### ✅ Correct Implementation (Resumable)
-
-You must catch the exception and delegate control to `macroWaitForResume()`.
+**❌ Incorrect Pattern: The Fragile Loop**
+In this example, an interruption crashes the loop because the exception is not handled.
 
 ```python
-from macro_creator import MacroHardPauseException, macroSleep, macroWaitForResume
-
-def taskToTen():
+def task_fragile_count():
     counter = 0
     while counter < 10:
-        try:
-            # Try to sleep normally
-            yield from macroSleep(1) 
-            
-        except MacroHardPauseException:
-            # CAUGHT: User paused. Wait here until they click Resume.
-            # When this returns, execution loops back naturally.
-            yield from macroWaitForResume()
+        # DANGER: If interrupted, this line raises TaskInterruptedException.
+        # Since it isn't caught, the function aborts immediately!
+        yield from task_sleep(1) 
         counter += 1
-    
-    print("Thread finished!") # <--- Only runs when thread is ACTUALLY done.
+
+    # This line is NEVER reached if the task is interrupted.
+    print("Task finished!") 
 
 ```
 
-### ⚠️ Critical Rule: Handling Stops (`MacroAbortException`)
+---
 
-**Rule:** Calls to `controller.sleep`, `waitForResume`, or any blocking method will raise `MacroAbortException` if the task is stopped while waiting. You **must not catch and ignore** this exception. Instead, use a `try/finally` block to ensure resources (files, connections, etc.) are closed properly when the task is terminated.
+#### 🛑 2. Handling Stops (Aborting)
 
-**Reason:** The engine uses this exception to immediately halt execution. Swallowing this exception (catching it without re-raising or returning) will cause your thread to keep running as a "phantom process" even after the user has clicked Stop.
+**The Exception:** `TaskAbortException`
+**The Scenario:** When the user clicks **Stop**, the engine raises this exception in any blocking method (`controller.sleep`, `waitForResume`) to halt execution immediately.
 
-**Note:** `MacroAbortException` abort exception does not apply to non-threaded tasks using `macroSleep()` or `macroWaitForResume()`. However, they should still follow this rule to ensure resources (files, connections, etc.) are closed properly when the task is terminated.
+**The Rule:** You **must never catch and ignore** this exception.
 
-#### ❌ Incorrect Implementation (The Phantom Thread)
+* **Do:** Use `try/finally` blocks to ensure resources (files, database connections) are closed.
+* **Do Not:** Use a bare `except:` or `except TaskAbortException:` that swallows the stop signal.
 
-In this example, the user catches `Exception` (which includes `MacroAbortException`), logs it, and **continues the loop**. The thread refuses to die.
-
-```python
-def openLogTask(controller):
-    # Bad Pattern: Swallowing the Stop signal
-    f = open("log.txt", "w")
-    
-    while True:
-        try:
-            # If user clicks STOP, this raises MacroAbortException
-            controller.sleep(1)
-            do_work()
-            
-        except Exception as e:
-            # DANGER: This catches MacroAbortException too!
-            # The code logs the error but the loop keeps spinning.
-            print(f"Error occurred: {e}")
-    
-    # This line is never reached if the loop doesn't break
-    f.close() 
-
-```
-
-#### ✅ Correct Implementation (The `finally` Pattern)
-
-Use `finally` to guarantee cleanup. You do not need to explicitly catch `MacroAbortException` because you *want* it to propagate up and stop the thread.
+**✅ Correct Pattern: The `finally` Cleanup**
+Use `finally` to guarantee cleanup. You do not need to explicitly catch `TaskAbortException` because you *want* it to propagate up and stop the thread.
 
 ```python
-def openLogTask(controller):
-    # Good Pattern: Resource safety
+def task_write_log(controller):
+    # Open a resource that MUST be closed later
     f = open("log.txt", "w")
     
     try:
         while True:
-            # If user clicks STOP, exception triggers cleanup immediately
+            # If user clicks STOP, 'controller.sleep' raises TaskAbortException
+            controller.sleep(1)
+            f.write("Working...\n")
+            
+    finally:
+        # This block ALWAYS runs, even if the task is Stopped/Aborted.
+        print("Cleanup: Closing file safely.")
+        f.close()
+
+```
+
+**❌ Incorrect Pattern: The "Phantom Thread"**
+Swallowing the exception causes the thread to stay alive as a "zombie" process, continuing to run even after the user thinks they stopped it.
+
+```python
+from macro_creator import TaskAbortException
+
+def task_zombie_log(controller):
+    while True:
+        try:
             controller.sleep(1)
             do_work()
             
-    finally:
-        # This block GUARANTEES execution:
-        # 1. If the loop finishes normally
-        # 2. If a crash happens
-        # 3. If the user clicks STOP (MacroAbortException)
-        print("Closing file...")
-        f.close()
+        except TaskAbortException as e:
+            # ⛔ DANGER: You caught the Stop signal and only printed it!
+            # The loop will just spin around and run again.
+            print(f"Stop ignored: {e}")
 
 ```
 

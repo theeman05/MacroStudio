@@ -124,29 +124,33 @@ class MacroCreator:
         self._worker.stop()
         self.ui.stopMacroVisuals()
 
-    def pauseMacroExecution(self, hard: bool=True):
+    def pauseMacroExecution(self, interrupt: bool=True):
         """
-        If the engine was running, pauses macro execution.
-        Args:
-            hard: Controls how the pause is handled.
+        Pauses the currently running task.
 
-                * ``True`` (Default): Interrupts the task to **release keys** and **clean up resources** safely.
-                * ``False``: **Freezes** the task in place (keys remain held down).
-         Returns:
-             ``True`` if paused successfully, ``False`` if the engine has stopped abruptly.
+        Args:
+            interrupt: Controls the mechanism used to pause.
+
+                * ``True`` (Default): **Interrupt & Cleanup.** Raises a ``TaskInterruptedException`` inside the task.
+                  This breaks the current step immediately (e.g., cuts short a ``taskSleep``), runs any
+                  ``try/finally`` cleanup blocks to **release keys** and reset state, and then suspends.
+                * ``False``: **Freeze.** Suspends the generator execution at the exact current line.
+                  No cleanup logic is triggered; held keys remain held and local variables are preserved exactly as-is.
+        Returns:
+            ``True`` if the pause command was issued successfully; ``False`` if the engine was already stopped.
         """
         if not self._worker.running:
             self._log("Cannot pause: Worker is already stopped.", level=LogLevel.WARN)
             self.ui.stopMacroVisuals()
             return False
 
-        still_running = self._worker.pause(hard)
+        still_running = self._worker.pause(interrupt)
         if still_running:
             self.ui.pauseMacroVisuals()
-            if hard:
-                self._log("Global Hard Pause active. Running tasks interrupted and cleaned up. (Current wait timers cancelled).")
+            if interrupt:
+                self._log("Global Interrupt Active: Running tasks interrupted and cleaned up. (Current wait timers cancelled).")
             else:
-                self._log("Global Pause active")
+                self._log("Global Pause Active")
         else:
             self.ui.stopMacroVisuals()
         return still_running

@@ -1,5 +1,5 @@
 import time
-from macro_creator import MacroCreator, MacroAbortException, MacroHardPauseException, macroRunTaskInThread, macroSleep
+from macro_creator import MacroCreator, TaskAbortException, TaskInterruptedException, taskAwaitThread, taskSleep
 
 
 def _taskInThread(controller):
@@ -19,7 +19,7 @@ def _taskInThread(controller):
             controller.log(f"[Thread] Accessing resources...")
             # Sleep the thread for the target duration
             controller.sleep(target_duration)
-        except MacroHardPauseException:
+        except TaskInterruptedException:
             controller.log("[Thread] PAUSED!")
         finally:
             # Always clean up resources here if needed
@@ -30,7 +30,7 @@ def _taskInThread(controller):
 
         controller.log(
             f"[Thread] Sleep Complete! Total elapsed real time: {time.time() - (end_time - target_duration):.2f}s")
-    except MacroAbortException:
+    except TaskAbortException:
         # This handles any aborts from controller.sleep and controller.waitForResume
         # We generally don't want to use this, but if you do make sure to return immediately after to not have hanging threads
         controller.log("[Thread] STOPPED! Exiting task immediately.")
@@ -39,7 +39,7 @@ def _threadedTask(controller):
     # Create and start thread task with the argument being the task controller
     controller.log("Starting background work...")
     # Yield while the thread task is running
-    yield from macroRunTaskInThread(_taskInThread, controller=controller)
+    yield from taskAwaitThread(_taskInThread, controller=controller)
 
 class ThreadMacro:
     def __init__(self, creator: MacroCreator):
@@ -51,11 +51,11 @@ class ThreadMacro:
 
     def threadHardPauser(self, controller):
         # Let's attempt to hard pause the threaded task!
-        yield from macroSleep(1)
+        yield from taskSleep(1)
         # After a second of running, pause the threaded task
         controller.log("Hard pausing the thread controller!")
         self.thread_task_controller.pause(True)
-        yield from macroSleep(2)
+        yield from taskSleep(2)
         # After two seconds, unpause the threaded task so it can finish
         # Since we were hard paused, the remaining time from the thread's sleep was discarded and the task ends early
         self.thread_task_controller.resume()

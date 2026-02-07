@@ -5,23 +5,23 @@ from PySide6.QtCore import QRect, QPoint
 from PIL import Image
 from pydirectinput import MOUSE_PRIMARY
 
-from macro_creator.types_and_enums import MacroHardPauseException, MacroAbortException
+from macro_creator.types_and_enums import TaskInterruptedException, TaskAbortException
 
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract'
 
 pydirectinput.PAUSE = 0.0
 
-def macroSleep(duration: float=.01):
+def taskSleep(duration: float=.01):
     """
     Non-blocking, yields control back to the scheduler for 'duration' seconds.
 
     Usage in task: yield from **macroSleep(2.0)**.
     Raises:
-        MacroHardPauseException: If hard-paused while sleeping.
+        TaskInterruptedException: If hard-paused while sleeping.
     """
     yield duration
 
-def macroWaitForResume():
+def taskWaitForResume():
     """
     Non-blocking, yields until the controller's hard-pause state is cleared.
 
@@ -56,7 +56,7 @@ def holdKey(key_name: str):
     finally:
         pydirectinput.keyUp(key_name)
 
-def macroHoldKey(key_name: str, duration: float):
+def taskHoldKey(key_name: str, duration: float):
     """
     Holds a key for some duration via yielding and guarantees its release.
 
@@ -69,9 +69,9 @@ def macroHoldKey(key_name: str, duration: float):
     """
     try:
         with holdKey(key_name):
-            yield from macroSleep(duration)
-    except MacroHardPauseException:
-        yield from macroWaitForResume()
+            yield from taskSleep(duration)
+    except TaskInterruptedException:
+        yield from taskWaitForResume()
 
 @contextmanager
 def mouseClick(coords: QPoint=None, button: str=MOUSE_PRIMARY):
@@ -87,7 +87,7 @@ def mouseClick(coords: QPoint=None, button: str=MOUSE_PRIMARY):
         else:
             pydirectinput.mouseUp(None, None, button)
 
-def macroMouseClick(coords: QPoint=None, button: str=MOUSE_PRIMARY):
+def taskMouseClick(coords: QPoint=None, button: str=MOUSE_PRIMARY):
     """
     Clicks at the given coordinates with the button, yields shortly, then releases the mouse.
 
@@ -100,18 +100,18 @@ def macroMouseClick(coords: QPoint=None, button: str=MOUSE_PRIMARY):
     """
     try:
         with mouseClick(coords, button):
-            yield from macroSleep(.1)
-    except MacroHardPauseException:
-        yield from macroWaitForResume()
+            yield from taskSleep(.1)
+    except TaskInterruptedException:
+        yield from taskWaitForResume()
 
 
-def macroRunTaskInThread(target_func, *args, **kwargs):
+def taskAwaitThread(fun_in_thread, *args, **kwargs):
     """
     Runs a function in a separate thread while keeping the generator alive to handle Engine pauses and Stops.
 
-    Usage in task: yield from macroRunTaskInThread(target_func).
+    Usage in task: yield from macroRunTaskInThread(fun_in_thread).
     Args:
-        target_func: The function to run.
+        fun_in_thread: The function to run in the thread.
         args: Arguments to pass to the function.
     """
     # Capture Thread Exceptions so they don't fail silently
@@ -119,7 +119,7 @@ def macroRunTaskInThread(target_func, *args, **kwargs):
 
     def thread_wrapper():
         try:
-            target_func(*args, **kwargs)
+            fun_in_thread(*args, **kwargs)
         except Exception as e:
             thread_exception.append(e)
 
@@ -135,12 +135,12 @@ def macroRunTaskInThread(target_func, *args, **kwargs):
                 raise thread_exception[0]  # Re-raise in the main engine!
             try:
                 # Short sleep to yield control back to the engine scheduler
-                yield from macroSleep(0.05)
-            except MacroHardPauseException:
+                yield from taskSleep(0.05)
+            except TaskInterruptedException:
                 # The Engine is Hard Paused.
                 # The THREAD should handle its own pausing via controller.sleep(),
                 # but WE (the monitor) must sit here and wait for the resume signal.
-                yield from macroWaitForResume()
+                yield from taskWaitForResume()
     finally:
         # Final Error Check (in case it crashed right at the end)
         if thread_exception:
