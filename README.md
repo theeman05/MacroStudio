@@ -1,10 +1,10 @@
-# Python Macro Engine
+# Python Macro Creator
 
 ![License](https://img.shields.io/badge/license-GPLv3-blue.svg) ![Python](https://img.shields.io/badge/python-3.10%2B-blue) ![Status](https://img.shields.io/badge/status-Active%20Development-green) [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Donate-yellow.svg)](https://buymeacoffee.com/dbhs)
 
 **Limitless automation, powered by Python.**
 
-The **Python Macro Engine** is a robust automation framework that bridges the gap between simple macro recorders and complex software development. Unlike traditional click-recorders, this engine allows you to script logic in pure Python, giving you access to the full power of the language—from computer vision (OpenCV) to API requests—while managing the lifecycle of your tasks through a user-friendly GUI.
+The **Python Macro Creator** is a robust automation framework that bridges the gap between simple macro recorders and complex software development. Unlike traditional click-recorders, this engine allows you to script logic in pure Python, giving you access to the full power of the language, from computer vision (OpenCV) to API requests while managing the lifecycle of your tasks through a user-friendly GUI.
 
 ## 🚀 Key Features
 
