@@ -5,3 +5,4 @@ mss
 pillow
 pynput
 pyside6
+numpy

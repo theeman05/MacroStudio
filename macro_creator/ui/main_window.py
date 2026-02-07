@@ -9,12 +9,13 @@ from PySide6.QtGui import QCloseEvent, QBrush, QColor, QFont, QDesktopServices, 
 from PySide6.QtCore import Qt, Signal, QTimer, QUrl, QEvent
 from pynput import keyboard
 
-from .capture_type_registry import GlobalCaptureRegistry
-from .type_handler import GlobalTypeHandler
+from macro_creator.core.capture_type_registry import GlobalCaptureRegistry
+from macro_creator.core.type_handler import GlobalTypeHandler
+from macro_creator.core.types_and_enums import LogPacket, LogLevel, LogErrorPacket
+from macro_creator.core.variable_config import VariableConfig
+from macro_creator.ui.theme_manager import ThemeManager
+
 from .overlay import TransparentOverlay
-from .types_and_enums import LogPacket, LogLevel, LogErrorPacket
-from .variable_config import VariableConfig
-from .theme_manager import ThemeManager
 
 
 EMPTY_VALUE_STR = "<Empty>"

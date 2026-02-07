@@ -2,10 +2,11 @@ from PySide6.QtWidgets import QWidget, QFrame, QHBoxLayout, QLabel, QPushButton
 from PySide6.QtCore import Qt, QPoint, QRect
 from PySide6.QtGui import QPainter, QPen, QColor, QKeyEvent
 from typing import TYPE_CHECKING
-from .types_and_enums import CaptureMode
+
+from macro_creator.core.types_and_enums import CaptureMode
 
 if TYPE_CHECKING:
-    from .gui_main import MainWindow
+    from .main_window import MainWindow
 
 TOOLBAR_STYLE = """
 QFrame#OverlayToolbar {

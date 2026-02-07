@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 from .types_and_enums import CaptureTypeDef, CaptureMode
 
 if TYPE_CHECKING:
-    from .gui_main import MainWindow
+    from macro_creator.ui.main_window import MainWindow
     from .variable_config import VariableConfig
 
 class GlobalCaptureRegistry:

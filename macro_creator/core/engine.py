@@ -4,11 +4,11 @@ from typing import Hashable
 
 from .task_controller import TaskController
 from .types_and_enums import TaskFunc, LogLevel, LogPacket, CaptureMode
-from .gui_main import MainWindow
 from .macro_worker import MacroWorker
 from .variable_config import VariableConfig
 from .profile_manager import ProfileManager
 from .capture_type_registry import GlobalCaptureRegistry
+from macro_creator.ui.main_window import MainWindow
 
 class MacroCreator:
     def __init__(self, macro_name: str):

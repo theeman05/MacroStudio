@@ -1,9 +1,9 @@
-from .engine import MacroCreator
-from .task_controller import TaskController
-from .types_and_enums import CaptureMode, TaskInterruptedException, TaskAbortException, LogLevel
-from .variable_config import VariableConfig
-from .utils import taskSleep, taskWaitForResume, taskAwaitThread
-from .type_handler import GlobalTypeHandler, register_handler
+from .core.engine import MacroCreator
+from .core.task_controller import TaskController
+from .core.types_and_enums import CaptureMode, TaskInterruptedException, TaskAbortException, LogLevel
+from .core.variable_config import VariableConfig
+from .core.type_handler import GlobalTypeHandler, register_handler
+from .actions import taskSleep, taskWaitForResume, taskAwaitThread, taskHoldKey, taskMouseClick
 
 __all__ = [
     'MacroCreator',
@@ -18,4 +18,6 @@ __all__ = [
     'taskWaitForResume',
     'taskAwaitThread',
     'register_handler',
+    'taskHoldKey',
+    'taskMouseClick'
 ]

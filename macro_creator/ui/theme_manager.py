@@ -1,7 +1,8 @@
 import importlib.resources
 from string import Template
 
-from . import templates
+from macro_creator.ui import templates
+
 
 class ThemeManager:
     # Define palettes as Python dictionaries
