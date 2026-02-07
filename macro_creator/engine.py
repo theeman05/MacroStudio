@@ -15,7 +15,7 @@ class MacroCreator:
         self._task_controllers: list[TaskController] = []
         self._setup_vars: dict[str, VariableConfig] = ProfileManager.loadVariables(_getVariableFilepath(macro_name))
         self._closing = False
-        self._worker = MacroWorker()
+        self._worker = MacroWorker(self)
         self._profile_name = macro_name
 
         # Setup UI stuff
