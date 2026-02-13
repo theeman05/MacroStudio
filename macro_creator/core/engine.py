@@ -38,10 +38,10 @@ class MacroCreator:
         """
         Add a setup step to gather variables.
 
-        If the key is present already and data types differ, overwrites the previous variable.
+        If the key is present already and value types differ, overwrites the previous variable.
         Args:
             key: The key to store the variable under.
-            data_type: The data type of the variable.
+            data_type: The value type of the variable.
             default_val: The default value of this step.
             pick_hint: The hint to display while the variable is being picked or hovered over
         """
@@ -59,7 +59,7 @@ class MacroCreator:
 
             data_type = GlobalCaptureRegistry.get(data_type).type_class if GlobalCaptureRegistry.containsMode(data_type) else data_type
 
-            # If data types differ, or there's no value for config, overwrite the previous value and data type
+            # If value types differ, or there's no value for config, overwrite the previous value and value type
             if (data_type is not config.data_type) or (config.value is None and default_val != config.value):
                 has_changes = True
                 config.data_type = data_type
@@ -187,7 +187,7 @@ class MacroCreator:
         sys.exit(self.app.exec())
 
 def _getVariableFilepath(macro_name: str) -> str:
-    base_dir = os.path.join(os.getcwd(), "data", "variables")
+    base_dir = os.path.join(os.getcwd(), "value", "variables")
 
     os.makedirs(base_dir, exist_ok=True)
 

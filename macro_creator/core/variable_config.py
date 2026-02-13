@@ -11,7 +11,7 @@ class VariableConfig:
         """
         Instantiates a new variable config object
         Args:
-            data_type: The data type for the object used for parsing and getting.
+            data_type: The value type for the object used for parsing and getting.
             default_val: The value on initializing the config
             pick_hint: The hint to display when we are hovering over the object (if pickable, when selecting)
         """

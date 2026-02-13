@@ -113,7 +113,7 @@ class MacroWorker(QThread):
                 for controller in forcefully_stopped:
                     self.logControllerAborted(controller)
             else:
-                self.log("System terminated all active tasks during hard pause.", level=LogLevel.WARN)
+                self.log("System terminated all active tasks during interrupting pause.", level=LogLevel.WARN)
 
 
     def run(self):
