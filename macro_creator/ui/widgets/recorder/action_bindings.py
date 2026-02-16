@@ -1,4 +1,3 @@
-from enum import Enum
 from typing import Union
 
 from PySide6.QtWidgets import (QPushButton, QComboBox, QWidget, QGridLayout, QTextEdit, QDoubleSpinBox, QDialog,
@@ -7,11 +6,8 @@ from PySide6.QtGui import QKeySequence
 from PySide6.QtCore import Qt, Signal, QEvent, QTimer
 
 from macro_creator.ui.shared import setBtnState
+from macro_creator.core.data.timeline_handler import MouseFunction
 
-
-class MouseFunction(str, Enum):
-    LEFT_CLICK = "Left Click"
-    RIGHT_CLICK = "Right Click"
 
 EditorWidget = Union[QPushButton, QComboBox, QTextEdit, QDoubleSpinBox, QSpinBox, QStackedWidget]
 

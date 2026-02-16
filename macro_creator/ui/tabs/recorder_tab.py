@@ -4,6 +4,7 @@ from PySide6.QtGui import QUndoStack
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,QListWidgetItem)
 from PySide6.QtCore import QSize
 
+from macro_creator.core.input_recorder import InputRecorder
 from macro_creator.core.data.timeline_handler import (
     TimelineModel, TimelineData, AddStepCommand, MoveStepsCommand, ChangeStepCommand, RemoveStepCommand)
 from macro_creator.ui.widgets.recorder import (
@@ -30,6 +31,7 @@ class RecorderTab(QWidget):
         self.timeline_model = TimelineModel()
         self.mouse_combo_model = MousePosComboBoxModel(profile.vars)
         self.undo_stack = QUndoStack(self)
+        self.input_recorder = InputRecorder()
         self.header_widget = TaskHeaderWidget(profile.tasks)
 
         layout_widget = QWidget()
@@ -72,7 +74,8 @@ class RecorderTab(QWidget):
         self.layout.addWidget(self.content_area)
 
         # Connect signals
-        # self.toolbar.record_clicked.connect(self.on_toggle_record)
+        self.input_recorder.stepAdded.connect(self.userRecordsStep)
+        self.toolbar.btn_record.clicked.connect(lambda: self.toggleRecording(True))
         self.toolbar.chk_select_all.toggled.connect(self.toggleSelectAll)
         self.toolbar.btn_save.clicked.connect(self.saveActiveTask)
         self.tasks.activeStepSet.connect(self.displayActiveTask)
@@ -220,6 +223,9 @@ class RecorderTab(QWidget):
             adjusted_target=adjusted_target
         ))
 
+    def userRecordsStep(self, insert_at, data: TimelineData):
+        self.undo_stack.push(AddStepCommand(self.timeline_model, insert_at, data))
+
     # --- View Updates (React to Signals) ---
     def onStepAdded(self, index, data: TimelineData):
         item = QListWidgetItem()
@@ -247,7 +253,7 @@ class RecorderTab(QWidget):
         item = self.timeline_list.item(old_index)
         old_widget = self.timeline_list.itemWidget(item)
         widget_data = old_widget.timeline_data
-        if duration := getStepDuration(widget_data): self.total_duration -= duration
+        if duration := getStepDuration(widget_data): self.addToTimer(-duration)
 
         taken_item = self.timeline_list.takeItem(old_index)
         if taken_item: del taken_item
@@ -259,15 +265,17 @@ class RecorderTab(QWidget):
         if item:
             widget = self.timeline_list.itemWidget(item)
             timeline_data = widget.timeline_data
-            if timeline_data.value != new_value:
+            old_value = widget.action_widget.value
+            if old_value != new_value:
                 old_duration = getStepDuration(timeline_data)
                 widget.action_widget.setValue(new_value)
 
-                partner_item = widget.partner_item
-                if widget.partner_item:
-                    partner_widget = self.timeline_list.itemWidget(partner_item)
-                    partner_widget.timeline_data.value = new_value
-                    partner_widget.action_widget.setValue(new_value)
+                if not isinstance(old_value, tuple) or old_value[0] != new_value[0]:
+                    partner_item = widget.partner_item
+                    if widget.partner_item:
+                        partner_widget = self.timeline_list.itemWidget(partner_item)
+                        partner_widget.timeline_data.value = new_value
+                        partner_widget.action_widget.setValue(new_value)
 
                 if old_duration is not None:
                     self.addToTimer((new_value or 0) - old_duration)
@@ -309,7 +317,7 @@ class RecorderTab(QWidget):
 
     def addToTimer(self, addition: int):
         if addition: self.total_duration += addition
-        self.toolbar.updateTimer(self.total_duration)
+        self.toolbar.updateTimer(round(self.total_duration, 3) + 0)
 
     def toggleSelectAll(self, is_checked):
         if self.timeline_list.count() == 0 and is_checked:
@@ -345,3 +353,44 @@ class RecorderTab(QWidget):
 
         self.toolbar.timer_container.hide()
         self.toolbar.trash_container.show()
+
+    def _onStopClicked(self):
+        self.toggleRecording(False, btn_press=True)
+
+    def toggleRecording(self, record: bool=None,btn_press=False):
+        was_recording = self.input_recorder.is_recording
+        if self.isVisible() or not record or was_recording:
+            if record is None:
+                record = not was_recording
+            elif (record and was_recording) or not (record or was_recording):
+                return
+
+            if record:
+                self.overlay.raiseToolbar("Stop Recording Task [F8]")
+                self.overlay.cancelClicked.connect(self._onStopClicked)
+                self.undo_stack.beginMacro("Record Steps")
+                self.input_recorder.start(self.timeline_model.count())
+            else:
+                self.overlay.hideToolbar()
+                self.overlay.cancelClicked.disconnect(self._onStopClicked)
+                self.input_recorder.stop()
+                # Trim the mouse stuff from click finish
+                if btn_press:
+                    for _ in range(4):
+                        row_count = self.timeline_model.count()
+                        if row_count == 0:
+                            break
+
+                        last_idx = row_count - 1
+                        last_step = self.timeline_model.getStep(last_idx)
+
+                        is_delay = last_step.action_type == ActionType.DELAY
+
+                        is_left_click = (last_step.action_type == ActionType.MOUSE and "LEFT_CLICK" in last_step.value[0])
+
+                        if is_delay or is_left_click:
+                            self.undo_stack.push(RemoveStepCommand(model=self.timeline_model, index=last_idx))
+                        else:
+                            break
+
+                self.undo_stack.endMacro()

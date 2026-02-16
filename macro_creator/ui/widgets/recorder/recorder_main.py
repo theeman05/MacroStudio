@@ -104,9 +104,10 @@ class RecorderToolbar(QWidget):
 
         self.trash_container.hide()
 
-        # 3. Record Button (Red Gradient)
+        # 3. Record Button
         self.btn_record = QPushButton("RECORD")
         self.btn_record.setIcon(createQtIcon("ph.record-fill", color_override="#ff0000"))
+        self.btn_record.setToolTip("Record Steps [F8]")
         self.btn_record.setIconSize(QSize(25,25))
         self.btn_record.setObjectName("btn_record")
         self.btn_record.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -139,17 +140,6 @@ class RecorderToolbar(QWidget):
 
     def updateTimer(self, seconds: float):
         self.lbl_timer.setText(f"{seconds:g}s")
-
-    def setRecordingState(self, is_recording: bool):
-        """Visual toggle for the record button"""
-        if is_recording:
-            self.btn_record.setText("⏹ STOP")
-            self.btn_record.setStyleSheet("""
-                background-color: #ff4444; border: 1px solid #ff0000; color: white;
-            """)
-        else:
-            self.btn_record.setText("🔴 RECORD")
-            self.btn_record.setStyleSheet(self._record_style_idle)
 
 
 class DragPreviewWidget(QWidget):

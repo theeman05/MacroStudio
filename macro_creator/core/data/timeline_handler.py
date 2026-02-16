@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from enum import Enum
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QUndoCommand
+from pynput.mouse import Button
 
 from macro_creator.core.type_handler import GlobalTypeHandler
 
@@ -12,6 +13,28 @@ class ActionType(str, Enum):
     KEYBOARD = "KEYBOARD FUNCTION"
     MOUSE = "MOUSE FUNCTION"
     TEXT = "TEXT FUNCTION"
+
+class MouseFunction(str, Enum):
+    LEFT_CLICK = "Left Click"
+    RIGHT_CLICK = "Right Click"
+    SCROLL_CLICK = "Scroll Click"
+    SCROLL_UP = "Scroll Up"
+    SCROLL_DOWN = "Scroll Down"
+    SCROLL_LEFT = "Scroll Left"
+    SCROLL_RIGHT = "Scroll Right"
+    MOUSE_4 = "Mouse Button 4"
+    MOUSE_5 = "Mouse Button 5"
+
+MOUSE_ACTION_MAP = {
+    # 1. Physical Buttons
+    MouseFunction.LEFT_CLICK: Button.left,
+    MouseFunction.RIGHT_CLICK: Button.right,
+    MouseFunction.SCROLL_CLICK: Button.middle,
+    MouseFunction.MOUSE_4: Button.x1, # Often the "Back" thumb button
+    MouseFunction.MOUSE_5: Button.x2, # Often the "Forward" thumb button
+}
+
+BUTTON_TO_FUNCTION_MAP = {v: k for k, v in MOUSE_ACTION_MAP.items()}
 
 @dataclass
 class TimelineData:

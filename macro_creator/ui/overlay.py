@@ -55,6 +55,7 @@ def _paintCapturable(painter, to_paint):
 
 class TransparentOverlay(QWidget):
     captureFinished = Signal()
+    cancelClicked = Signal()
 
     def __init__(self, main_window: "MainWindow"):
         super().__init__()
@@ -85,6 +86,8 @@ class TransparentOverlay(QWidget):
         self._highlighted: VariableConfig | QPoint | QRect | None = None
         self._captured_data = None
 
+        self.cancelClicked.connect(self._finishCapture)
+
     @property
     def showing_geometry(self):
         return self._showing_geometry
@@ -108,7 +111,7 @@ class TransparentOverlay(QWidget):
         layout.addWidget(self.lbl_instruction)
 
         self.btn_cancel = QPushButton("X")
-        self.btn_cancel.clicked.connect(lambda: self._finishCapture())
+        self.btn_cancel.clicked.connect(lambda: self.cancelClicked.emit())
         layout.addWidget(self.btn_cancel)
 
         self.toolbar.hide()
@@ -122,9 +125,20 @@ class TransparentOverlay(QWidget):
             self.toolbar.setGeometry(x, 20, w, h)
         super().resizeEvent(event)
 
+    def raiseToolbar(self, display_text):
+        self.main_window.hide()
+        self.lbl_instruction.setText(display_text or "")
+        self.show()
+        self.toolbar.show()
+        self.toolbar.raise_()
+
+    def hideToolbar(self):
+        self.toolbar.hide()
+        self.setClickThrough(True)
+        self.main_window.show()
+
     def captureData(self, mode: CaptureMode, display_text=None) -> QRect | QPoint | None:
         """Shows the overlay and waits until capture is finished"""
-        self.main_window.hide()
         self.current_mode = mode
 
         if display_text is None:
@@ -133,11 +147,7 @@ class TransparentOverlay(QWidget):
             elif mode is CaptureMode.POINT:
                 display_text = "Click to set the point"
 
-        self.lbl_instruction.setText(display_text)
-
-        self.show()
-        self.toolbar.show()
-        self.toolbar.raise_()
+        self.raiseToolbar(display_text)
 
         self.setClickThrough(False)
         self.setCursor(Qt.CursorShape.CrossCursor)
@@ -154,13 +164,12 @@ class TransparentOverlay(QWidget):
         return capture_data
 
     def _finishCapture(self, capture_data=None):
+        if self.current_mode is None: return
         self._captured_data = capture_data
         self.start_pos = self.selection_rect = self.current_mode = None
         self.setCursor(Qt.CursorShape.ArrowCursor)
-        self.toolbar.hide()
         self.update()
-        self.setClickThrough(True)
-        self.main_window.show()
+        self.hideToolbar()
         self.captureFinished.emit()
 
     def setClickThrough(self, enabled: bool):

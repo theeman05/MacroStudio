@@ -54,7 +54,8 @@ class MainWindow(QMainWindow):
 
         self.variables_tab = VariablesTab(profile.vars, self.overlay)
         self.tabs.addTab(self.variables_tab, "Variables")
-        self.tabs.addTab(RecorderTab(self.overlay, profile), "Recorder")
+        self.recorder_tab = RecorderTab(self.overlay, profile)
+        self.tabs.addTab(self.recorder_tab, "Recorder")
 
         self.main_layout.addWidget(self.tabs)
 
@@ -67,6 +68,7 @@ class MainWindow(QMainWindow):
         self.hotkey_signal.connect(self._onHotkey)
         self.listener = keyboard.GlobalHotKeys({
             '<f10>': lambda: self.hotkey_signal.emit("F10"),
+            '<f8>': lambda: self.hotkey_signal.emit("F8"),
             '<f6>': lambda: self.hotkey_signal.emit("F6")
         })
         self.listener.start()
@@ -226,6 +228,8 @@ class MainWindow(QMainWindow):
     def _onHotkey(self, hotkey_id: str):
         if hotkey_id == "F6":
             self.onStartClicked()
+        elif hotkey_id == "F8":
+            self.recorder_tab.toggleRecording()
         elif hotkey_id == "F10":
             self.stopMacroVisuals()
 
