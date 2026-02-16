@@ -108,6 +108,19 @@ class GlobalTypeHandler:
         # Fallback to str if unregistered type
         return str
 
+    @classmethod
+    def setIfEvals(cls, key, value, to_dict: dict[object, object], strict_eval=False):
+        """
+        Sets the value in the dict if the value evaluates to True.
+        Args:
+            key: The key to use in the dict.
+            value: Value to potentially set.
+            to_dict: Dict to potentially add item to.
+            strict_eval: If strict_eval, only adds the value if it's not None
+        """
+        if not value or (strict_eval and value is None): return
+        to_dict[key] = value
+
 
 # --- Helper Decorator for easy registration ---
 def _registerClass(cls, target_type = None):

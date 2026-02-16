@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Generator, Hashable
 
 from .pause_state import PauseState
 from .types_and_enums import TaskFunc, TaskAbortException, TaskInterruptedException, LogLevel
+from .logger import global_logger
 
 if TYPE_CHECKING:
     from .macro_worker import MacroWorker
@@ -241,11 +242,11 @@ class TaskController:
             args: The objects to be printed in the log. If mode is not ERROR, will cast the args automatically.
             level: The log level to display at.
         """
-        self._scheduler.log(*args, level=level, task_id=self._id)
+        global_logger.log(*args, level=level, task_id=self._id)
 
     def logError(self, error_msg, trace=""):
         """Sends a specialized LogErrorPacket object to the ui."""
-        self._scheduler.logError(error_msg, trace, self._id)
+        global_logger.logError(error_msg, trace, self._id)
 
     def getVar(self, key: Hashable):
         """

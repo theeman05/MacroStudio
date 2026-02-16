@@ -2,17 +2,18 @@ from enum import Enum
 from typing import Union
 
 from PySide6.QtWidgets import (QPushButton, QComboBox, QWidget, QGridLayout, QTextEdit, QDoubleSpinBox, QDialog,
-                               QVBoxLayout, QHBoxLayout, QLabel, QToolButton, QPlainTextEdit, QSpinBox)
+                               QVBoxLayout, QHBoxLayout, QLabel, QToolButton, QPlainTextEdit, QSpinBox, QStackedWidget)
 from PySide6.QtGui import QKeySequence
 from PySide6.QtCore import Qt, Signal, QEvent, QTimer
 
 from macro_creator.ui.shared import setBtnState
 
+
 class MouseFunction(str, Enum):
     LEFT_CLICK = "Left Click"
     RIGHT_CLICK = "Right Click"
 
-EditorWidget = Union[QPushButton, QComboBox, QTextEdit, QDoubleSpinBox, QSpinBox]
+EditorWidget = Union[QPushButton, QComboBox, QTextEdit, QDoubleSpinBox, QSpinBox, QStackedWidget]
 
 class SneakyWidget(QWidget):
     """
@@ -20,8 +21,8 @@ class SneakyWidget(QWidget):
     """
     valueChanged = Signal(object) # Called before the value changes to the (new_value)
 
-    def __init__(self, internal_widget: EditorWidget | None, value):
-        super().__init__(None)
+    def __init__(self, internal_widget: EditorWidget | None, value, parent=None):
+        super().__init__(parent)
         self.value = value
 
         self.can_finish = False
@@ -66,7 +67,7 @@ class SneakyWidget(QWidget):
         if has_new_data and old_value != new_value:
             # Emit change before setting the value
             self.valueChanged.emit(new_value)
-        self.setValue(new_value)
+        self.setValue(new_value if has_new_data else old_value)
         self.editor.hide()
 
     def setValue(self, new_value):
@@ -81,14 +82,17 @@ class SneakyWidget(QWidget):
             self.finishEditing()
         return super().eventFilter(source, event)
 
+    def _setCanFinishTrue(self):
+        self.can_finish = True
+
     # Should be based on the current value if pairable
     def getDisplayStr(self):
         return "IMPLEMENT ME SUBCLASS WHYYY"
 
 ## ----------- PAIRABLE ----------- ##
 class KeyCaptureEditor(SneakyWidget):
-    def __init__(self, prev_key_str):
-        super().__init__(QPushButton(), value=prev_key_str)
+    def __init__(self, parent, prev_key_str):
+        super().__init__(QPushButton(), value=prev_key_str, parent=parent)
 
     def startCapture(self):
         self.editor.setText("Press any key...")
@@ -114,17 +118,17 @@ class KeyCaptureEditor(SneakyWidget):
     def getDisplayStr(self):
         return self.value if self.value else "No key set"
 
-class MouseComboEditor(SneakyWidget):
-    def __init__(self, prev_key_str):
+class SneakyComboEditor(SneakyWidget):
+    def __init__(self, parent, prev_key_str, enum=MouseFunction):
         combo_box = QComboBox()
         i = 0
-        for e in MouseFunction:
+        for e in enum:
             combo_box.addItem(e.value, e.name)
             if e.name == prev_key_str:
                 combo_box.setCurrentIndex(i)
             i += 1
-
-        super().__init__(combo_box, value=prev_key_str)
+        self.enum = enum
+        super().__init__(combo_box, value=prev_key_str, parent=parent)
         combo_box.activated.connect(lambda: self.finishEditing(combo_box.currentData()))
 
     def startCapture(self):
@@ -134,27 +138,25 @@ class MouseComboEditor(SneakyWidget):
         self.editor.showPopup()
         QTimer.singleShot(200, self._setCanFinishTrue)
 
-    def _setCanFinishTrue(self):
-        self.can_finish = True
-
     def setValue(self, new_value_str):
         if new_value_str is None:
             self.editor.setCurrentIndex(0)
             new_value_str = self.editor.currentData()
+
         super().setValue(new_value_str)
 
     def getDisplayStr(self):
-        return MouseFunction[self.value].value
+        return self.enum[self.value].value
 
 ## ----------- NON - PAIRABLE ----------- ##
 class SneakyDbSpinBox(SneakyWidget):
-    def __init__(self, prev_value: float):
+    def __init__(self, parent, prev_value: float):
         prev_value = prev_value
         spinner = QDoubleSpinBox()
         spinner.setRange(0.0, 1000000.0)
         spinner.setSingleStep(0.001)
         spinner.setDecimals(3)
-        super().__init__(spinner, value=prev_value)
+        super().__init__(spinner, value=prev_value, parent=parent)
         spinner.editingFinished.connect(self.finishEditing)
 
     def startCapture(self):
@@ -171,11 +173,11 @@ class SneakyDbSpinBox(SneakyWidget):
         return f"{self.value:g}s"
 
 class SneakySpinBox(SneakyWidget):
-    def __init__(self, prev_value: int):
+    def __init__(self, parent, prev_value: int):
         prev_value = prev_value or 1
         spinner = QSpinBox()
         spinner.setRange(1, 10000)
-        super().__init__(spinner, value=prev_value)
+        super().__init__(spinner, value=prev_value, parent=parent)
         spinner.editingFinished.connect(self.finishEditing)
 
     def startCapture(self):
@@ -265,10 +267,10 @@ class TextFunctionDialog(QDialog):
             self.lbl_counter.setStyleSheet("")
 
 class SneakyTextEditor(SneakyWidget):
-    def __init__(self, prev_text):
+    def __init__(self, parent, prev_text):
         self.text_dialog = None
-        super().__init__(QPushButton(), value=prev_text)
-        self.text_dialog = TextFunctionDialog(parent=self.window())
+        super().__init__(QPushButton(), value=prev_text, parent=parent)
+        self.text_dialog = TextFunctionDialog(parent=parent)
         self.text_dialog.finished.connect(self.finishEditing)
 
     def startCapture(self):

@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING
 from .types_and_enums import CaptureTypeDef, CaptureMode
 
 if TYPE_CHECKING:
-    from macro_creator.ui.main_window import MainWindow
-    from .variable_config import VariableConfig
+    from macro_creator.ui.overlay import TransparentOverlay
+    from macro_creator.core.data.variable_config import VariableConfig
 
 class GlobalCaptureRegistry:
     _definitions = {} # Maps Mode -> Definition
@@ -45,21 +45,21 @@ class GlobalCaptureRegistry:
         """
         return type_class in cls._type_map
 
-def captureOverlayGeneric(window: "MainWindow", config: "VariableConfig"):
+def captureOverlayGeneric(overlay: "TransparentOverlay", config: "VariableConfig"):
     """Standard handler for modes that uses the existing Overlay system."""
-    window.overlay.startCapture(GlobalCaptureRegistry.getModeFromType(config.data_type), config.hint)
+    return overlay.captureData(GlobalCaptureRegistry.getModeFromType(config.data_type), config.hint)
 
 
 GlobalCaptureRegistry.register(CaptureTypeDef(
     mode=CaptureMode.POINT,
     type_class=QPoint,
     tip="Format: x, y",
-    capture_handler=captureOverlayGeneric,
+    capture_method=captureOverlayGeneric,
 ))
 
 GlobalCaptureRegistry.register(CaptureTypeDef(
     mode=CaptureMode.REGION,
     type_class=QRect,
     tip="Format: x, y, width, height",
-    capture_handler=captureOverlayGeneric,
+    capture_method=captureOverlayGeneric,
 ))

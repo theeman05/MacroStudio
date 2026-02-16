@@ -1,63 +1,17 @@
-import sys, re
-from PySide6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
+from typing import TYPE_CHECKING
+
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLabel, QLineEdit, QDialog, QScrollArea, QFrame, QMenu, QComboBox,
     QMessageBox, QFileDialog, QCheckBox
 )
-from PySide6.QtCore import Qt, QPoint, QEvent
+from PySide6.QtCore import Qt, QPoint, QEvent, Signal
 from PySide6.QtGui import QCursor
 
-from macro_creator.core.task_manager import TaskManager
+from macro_creator.core.logger import global_logger
 from macro_creator.ui.shared import HoverButton, createIconLabel, SELECTED_COLOR
 
-
-def validate_task_rename(new_name, current_name, task_manager: TaskManager):
-    """
-    Validates a name change.
-    Returns: (is_valid, result_string_or_error_message)
-    """
-    clean_name = new_name.strip()
-
-    # 1. Check Empty
-    if not clean_name:
-        return False, "Task name cannot be empty"
-
-    # 2. Check No Change (Valid, but nothing to do)
-    if clean_name == current_name:
-        return True, clean_name
-
-    # 3. Check Duplicates
-    if task_manager.getTaskIdx(current_name) != -1:
-        return False, f"Task '{clean_name}' already exists"
-
-    return True, clean_name
-
-def generate_unique_name(base_name, task_manager):
-    """
-    Generates a unique name based off base_name.
-    If base is present, returns a name like base_name (1), base_name (2), etc.
-    """
-    existing_names = {task.name for task in task_manager.tasks}
-
-    # Smart Strip: Check if base_name already ends in "(digits)"
-    match_existing = re.match(r"^(.*?)\s\(\d+\)$", base_name)
-
-    if match_existing:
-        # User passed "Task (1)", so our core name is just "Task"
-        core_name = match_existing.group(1)
-    else:
-        # User passed "Task", so that is our core name
-        core_name = base_name
-
-    if base_name not in existing_names:
-        return base_name
-
-    i = 1
-    while base_name in existing_names:
-        base_name = f"{core_name} ({i})"
-        i += 1
-
-    return base_name
+if TYPE_CHECKING:
+    from macro_creator.core.data import TaskStore
 
 class TaskRowWidget(QWidget):
     def __init__(self, name, parent_popup):
@@ -83,7 +37,7 @@ class TaskRowWidget(QWidget):
         self.name_edit = QLineEdit(name or "")
         self.name_edit.hide()
         # Connect signals for saving
-        self.name_edit.editingFinished.connect(self.attempt_rename)
+        self.name_edit.editingFinished.connect(self.attemptRename)
         self.name_edit.installEventFilter(self)
         layout.addWidget(self.name_edit)
 
@@ -94,7 +48,7 @@ class TaskRowWidget(QWidget):
         self.dots_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.dots_btn.setAutoDefault(False)
         self.dots_btn.setDefault(False)
-        self.dots_btn.clicked.connect(self.show_context_menu)
+        self.dots_btn.clicked.connect(self.showContextMenu)
         self.dots_btn.hide()
         layout.addWidget(self.dots_btn)
 
@@ -111,35 +65,35 @@ class TaskRowWidget(QWidget):
     def mousePressEvent(self, event):
         if self.name_edit.isVisible(): return
         if event.button() == Qt.MouseButton.LeftButton:
-            self.parent_popup.select_task(self.name)
+            self.parent_popup.selectTask(self.name)
         elif event.button() == Qt.MouseButton.RightButton:
-            self.show_context_menu()
+            self.showContextMenu()
 
     def eventFilter(self, source, event):
         """Cancel renames when clicking out of task_name_edit"""
         if source == self.name_edit and event.type() == QEvent.Type.FocusOut and event.reason() != Qt.FocusReason.TabFocusReason:
-            self.cancel_rename()
+            self.cancelRename()
             return True
 
         return super().eventFilter(source, event)
 
-    def show_context_menu(self):
+    def showContextMenu(self):
         menu = QMenu(self)
 
         act_rename = menu.addAction("Rename")
-        act_rename.triggered.connect(self.enable_rename_mode)
+        act_rename.triggered.connect(self.enableRenameMode)
 
         act_dup = menu.addAction("Duplicate")
-        act_dup.triggered.connect(lambda: self.parent_popup.duplicate_task(self.name))
+        act_dup.triggered.connect(lambda: self.parent_popup.duplicateTask(self.name))
 
         menu.addSeparator()
 
         act_del = menu.addAction("Delete")
-        act_del.triggered.connect(lambda: self.parent_popup.delete_task(self.name))
+        act_del.triggered.connect(lambda: self.parent_popup.deleteTask(self.name))
 
         menu.exec(QCursor.pos())
 
-    def enable_rename_mode(self):
+    def enableRenameMode(self):
         self.name_label.hide()
         self.name_edit.setText(self.name or " ")
         self.name_edit.show()
@@ -147,7 +101,7 @@ class TaskRowWidget(QWidget):
         self.name_edit.selectAll()
         self.name_edit.setStyleSheet("")
 
-    def attempt_rename(self):
+    def attemptRename(self):
         if not self.name_edit.isVisible():
             return
 
@@ -155,7 +109,7 @@ class TaskRowWidget(QWidget):
 
         # Case 1: No change
         if new_name == self.name:
-            self.cancel_rename()
+            self.cancelRename()
             return
 
         # Case 2: Empty name
@@ -164,20 +118,20 @@ class TaskRowWidget(QWidget):
             return
 
         # Case 3: Try to rename via parent
-        success, error_msg = self.parent_popup.rename_task(self.name, new_name)
+        success, error_msg = self.parent_popup.renameTask(self.name, new_name)
 
         if success:
             self.name = new_name
             self.name_label.setText(new_name)
             if self.is_adding:
                 self.is_adding = False
-                self.parent_popup.finalize_temp_task(self)
-            self.cancel_rename()
+                self.parent_popup.finalizeTempTask(self)
+            self.cancelRename()
         else:
             self.name_edit.setStyleSheet("border: 1px solid red;")
             self.name_edit.setToolTip(error_msg)
 
-    def cancel_rename(self):
+    def cancelRename(self):
         if not self.is_adding:
             self.name_edit.hide()
             self.name_label.show()
@@ -188,13 +142,13 @@ class TaskRowWidget(QWidget):
             self.deleteLater()
 
 class TaskSelectorPopup(QDialog):
-    def __init__(self, task_manager: TaskManager, parent_header):
+    def __init__(self, task_store: "TaskStore", parent_header):
         super().__init__(parent_header)
         self.setObjectName("TaskPopup")
         self.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
         self.setFixedSize(300, 400)
 
-        self.task_manager = task_manager
+        self.tasks = task_store
         self.parent_header = parent_header
 
         self.rows_list = []
@@ -206,12 +160,12 @@ class TaskSelectorPopup(QDialog):
         # --- Search & Sort ---
         self.search_bar = QLineEdit()
         self.search_bar.setPlaceholderText("Search")
-        self.search_bar.textChanged.connect(self.refresh_view)
+        self.search_bar.textChanged.connect(self.refreshView)
         layout.addWidget(self.search_bar)
 
         self.sort_combo = QComboBox()
         self.sort_combo.addItems(["Alphabetical (A to Z)", "Alphabetical (Z to A)", "Newest First", "Oldest First"])
-        self.sort_combo.currentIndexChanged.connect(self.refresh_view)
+        self.sort_combo.currentIndexChanged.connect(self.refreshView)
         layout.addWidget(self.sort_combo)
 
         # --- Header ---
@@ -220,7 +174,7 @@ class TaskSelectorPopup(QDialog):
         btn_add = HoverButton("ph.plus-circle", size=25)
         btn_add.setAutoDefault(False)
         btn_add.setDefault(False)
-        btn_add.clicked.connect(self.creat_temp_task)
+        btn_add.clicked.connect(self.createTempTask)
 
         header_label = QLabel("TASKS")
         header_label.setObjectName("header_label")
@@ -241,16 +195,16 @@ class TaskSelectorPopup(QDialog):
         self.scroll_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         # Initial Build
-        for t in task_manager.tasks:
-            self.add_task_widget(t.name)
+        for t in task_store.tasks:
+            self.addTaskWidget(t.name)
 
         scroll.setWidget(self.scroll_content)
         layout.addWidget(scroll)
-        self.refresh_view()
+        self.refreshView()
 
     # --- Core Logic ---
 
-    def add_task_widget(self, task_name):
+    def addTaskWidget(self, task_name):
         """Creates the widget and registers it in our map."""
         widget = TaskRowWidget(task_name, self)
         self.rows_list.append(widget)
@@ -258,30 +212,32 @@ class TaskSelectorPopup(QDialog):
         # Note: We don't add to layout here, refresh_view handles that
         return widget
 
-    def creat_temp_task(self):
+    def createTempTask(self):
         widget = TaskRowWidget(None, self)
         self.scroll_layout.insertWidget(0, widget)
-        widget.enable_rename_mode()
+        widget.enableRenameMode()
 
-    def finalize_temp_task(self, widget: TaskRowWidget):
+    def finalizeTempTask(self, widget: TaskRowWidget):
         self.rows_list.append(widget)
-        self.task_manager.createTask(widget.name)
-        self.refresh_view()
+        self.tasks.createTask(widget.name)
+        self.refreshView()
 
-    def duplicate_task(self, task_name):
-        new_name = generate_unique_name(task_name, self.task_manager)
-        self.task_manager.createTask(new_name)
-        self.add_task_widget(new_name)
-        self.refresh_view()
+    def duplicateTask(self, task_name):
+        ref_task = self.tasks.getTaskIdx(task_name)
+        if ref_task == -1: return
+        new_name = self.tasks.generateUniqueName(task_name)
+        self.tasks.createTask(new_name, serialized_steps=self.tasks.tasks[ref_task].steps)
+        self.addTaskWidget(new_name)
+        self.refreshView()
 
-    def rename_task(self, old_name, new_name):
+    def renameTask(self, old_name, new_name):
         """
         Validates and executes a rename.
         Returns (True, None) on success.
         Returns (False, ErrorMessage) on failure.
         """
         task_match = None
-        for task in self.task_manager.tasks:
+        for task in self.tasks.tasks:
             if task.name == old_name:
                 task_match = task
             elif task.name == new_name:
@@ -295,31 +251,29 @@ class TaskSelectorPopup(QDialog):
             task_match.name = new_name
 
         # Update Parent Header (if it was selected)
-        if task_match == self.task_manager.getActiveTask():
-            self.parent_header.update_task_display()
+        if task_match == self.tasks.getActiveTask():
+            self.parent_header.updateTaskDisplay()
 
         return True, None
 
-    def delete_task(self, task_name):
+    def deleteTask(self, task_name):
         reply = QMessageBox.question(
             self, "Delete Task",
             f"Are you sure you want to delete '{task_name}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
-            active_task = self.task_manager.getActiveTask()
-            remove_idx = self.task_manager.removeTask(task_name)
+            active_task = self.tasks.getActiveTask()
+            remove_idx = self.tasks.removeTask(task_name)
 
             if remove_idx != -1:
                 # Remove from UI
-                widget = self.rows_list.pop(remove_idx)
-                self.scroll_layout.removeWidget(widget)
-                widget.deleteLater()
+                self.scroll_layout.removeWidget(self.rows_list.pop(remove_idx))
 
                 if active_task.name == task_name:
-                    self.parent_header.update_task_display()
+                    self.parent_header.updateTaskDisplay()
 
-    def refresh_view(self):
+    def refreshView(self):
         """
         Efficiently hides/shows and reorders widgets based on search/sort.
         Does NOT destroy widgets.
@@ -352,20 +306,21 @@ class TaskSelectorPopup(QDialog):
             self.scroll_layout.addWidget(w)
             w.show()
 
-    def select_task(self, task_name):
-        task_idx = self.task_manager.getTaskIdx(task_name)
-        if task_idx != -1 and self.parent_header.request_task_switch(task_idx):
+    def selectTask(self, task_name):
+        task_idx = self.tasks.getTaskIdx(task_name)
+        if task_idx != -1 and self.parent_header.requestTaskSwitch(task_idx):
             self.accept()
 
 class TaskHeaderWidget(QWidget):
-    def __init__(self, task_manager: TaskManager):
+    saveRequested = Signal()
+    def __init__(self, task_store: "TaskStore"):
         super().__init__()
         self.setFixedHeight(50)
 
         self.task_selector = None
 
         # Shared state for tasks
-        self.task_manager = task_manager
+        self.tasks = task_store
         self.is_creating_new = False
         self.has_changes = False
 
@@ -380,7 +335,7 @@ class TaskHeaderWidget(QWidget):
         btn_layout = QHBoxLayout(self.btn_task)
         btn_layout.addStretch()
         btn_layout.addWidget(createIconLabel("ei.chevron-down", size=(15,15)))
-        self.btn_task.clicked.connect(lambda: self.toggle_task_selector())
+        self.btn_task.clicked.connect(lambda: self.toggleSelectorPopup())
 
         layout.addWidget(self.btn_task)
 
@@ -388,13 +343,13 @@ class TaskHeaderWidget(QWidget):
         self.task_name_edit = QLineEdit()
         self.task_name_edit.setFixedWidth(200)
         self.task_name_edit.hide()
-        self.task_name_edit.editingFinished.connect(self.save_rename)
+        self.task_name_edit.editingFinished.connect(self.saveRename)
         self.task_name_edit.installEventFilter(self)
         layout.addWidget(self.task_name_edit)
 
         self.btn_menu = HoverButton("ph.dots-three-outline-fill", size=30)
         self.btn_menu.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_menu.clicked.connect(self.show_main_menu)
+        self.btn_menu.clicked.connect(self.showMainMenu)
 
         layout.addWidget(self.btn_menu)
 
@@ -406,7 +361,7 @@ class TaskHeaderWidget(QWidget):
         self.btn_new = QPushButton("New Task")
         self.btn_new.setObjectName("new_task_btn")
         self.btn_new.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_new.clicked.connect(self.on_add)
+        self.btn_new.clicked.connect(self.onAdd)
         layout.addWidget(self.btn_new)
 
         layout.addStretch()
@@ -414,29 +369,29 @@ class TaskHeaderWidget(QWidget):
         self.chk_loop = QCheckBox("Auto Loop")
         self.chk_loop.setToolTip("Automatically restart the task when it finishes.")
         self.chk_loop.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.chk_loop.clicked.connect(self.toggle_auto_loop)
+        self.chk_loop.clicked.connect(self.toggleAutoLoop)
         layout.addWidget(self.chk_loop)
 
-        self.update_task_display()
+        self.updateTaskDisplay()
 
     def eventFilter(self, source, event):
         """Cancel renames when clicking out of task_name_edit"""
         if source == self.task_name_edit and event.type() == QEvent.Type.FocusOut:
-            self.cancel_rename()
+            self.cancelRename()
             return True
 
         return super().eventFilter(source, event)
 
-    def toggle_auto_loop(self, checked: bool):
-        active_task = self.task_manager.getActiveTask()
+    def toggleAutoLoop(self, checked: bool):
+        active_task = self.tasks.getActiveTask()
         if active_task:
             prev_state = active_task.auto_loop
             if prev_state != checked:
                 active_task.auto_loop = checked
         elif checked:
-            self.task_manager.createTask("New Task").auto_loop = True
+            self.tasks.createTask("New Task").auto_loop = True
 
-    def set_modified(self, modified: bool):
+    def setModified(self, modified: bool):
         self.has_changes = modified
         current_text = self.btn_task.text().replace("*", "")
         if modified:
@@ -444,15 +399,11 @@ class TaskHeaderWidget(QWidget):
         else:
             self.btn_task.setText(current_text)
 
-    def save_changes(self):
-        print(f"Saving changes for {self.btn_task.text().replace('*', '')}")
-        self.set_modified(False)
-
-    def confirm_discard_changes(self) -> bool:
+    def confirmDiscardChanges(self) -> bool:
         """
         Checks for unsaved changes.
         Returns True if it's safe to proceed (changes saved, discarded, or none existed).
-        Returns False if the action should be cancelled.
+        Returns False if the action should be canceled.
         """
         if not self.has_changes:
             return True
@@ -470,32 +421,32 @@ class TaskHeaderWidget(QWidget):
         clicked_button = msg_box.clickedButton()
 
         if clicked_button == btn_save:
-            self.save_changes()
+            self.saveRequested.emit()
             return True
         elif clicked_button == btn_discard:
-            self.set_modified(False) # Discard changes
+            self.setModified(False)  # Discard changes
             return True
         
         return False
 
-    def request_task_switch(self, new_task_idx):
+    def requestTaskSwitch(self, new_task_idx):
         """
         Attempts to switch to a new task, handling unsaved changes.
         Returns True if switch successful, False if cancelled.
         """
-        if self.confirm_discard_changes():
-            self.task_manager.setActiveTask(new_task_idx)
-            self.update_task_display()
+        if self.confirmDiscardChanges():
+            self.tasks.setActiveTask(new_task_idx)
+            self.updateTaskDisplay()
             return True
         return False
 
-    def update_task_display(self):
-        active_task = self.task_manager.getActiveTask()
+    def updateTaskDisplay(self):
+        active_task = self.tasks.getActiveTask()
         self.chk_loop.setChecked(active_task.auto_loop if active_task else False)
         self.btn_task.setText(active_task.name if active_task else "New Task")
         self.has_changes = False # Reset changes on new task load
 
-    def toggle_task_selector(self, show=None):
+    def toggleSelectorPopup(self, show=None):
         current_popup = self.task_selector
         is_visible = current_popup is not None and current_popup.isVisible()
         should_show = (not is_visible) if show is None else show
@@ -503,7 +454,7 @@ class TaskHeaderWidget(QWidget):
         if should_show:
             if is_visible: return
 
-            self.task_selector = TaskSelectorPopup(self.task_manager, self)
+            self.task_selector = TaskSelectorPopup(self.tasks, self)
             pos = self.btn_task.mapToGlobal(QPoint(0, self.btn_task.height()))
             self.task_selector.move(pos)
             self.task_selector.exec()
@@ -512,42 +463,37 @@ class TaskHeaderWidget(QWidget):
             current_popup.close()
             self.task_selector = None
 
-    def show_main_menu(self):
+    def showMainMenu(self):
         menu = QMenu(self)
 
         act_add = menu.addAction("Add")
-        act_add.triggered.connect(self.on_add)
+        act_add.triggered.connect(self.onAdd)
 
         act_import = menu.addAction("Import")
-        act_import.triggered.connect(self.on_import)
+        act_import.triggered.connect(self.onImport)
 
         menu.addSeparator()
         
         act_rename = menu.addAction("Rename")
-        act_rename.triggered.connect(self.enable_rename_mode)
+        act_rename.triggered.connect(self.enableRenameMode)
         
         act_dup = menu.addAction("Duplicate")
-        act_dup.triggered.connect(self.on_duplicate)
+        act_dup.triggered.connect(self.onDuplicate)
 
         act_export = menu.addAction("Export")
-        act_export.triggered.connect(self.on_export)
+        act_export.triggered.connect(self.onExport)
 
         menu.addSeparator()
         
         act_del = menu.addAction("Delete")
-        act_del.triggered.connect(self.on_delete)
-
-        # Debug action to simulate changes
-        menu.addSeparator()
-        act_mod = menu.addAction("Simulate Change")
-        act_mod.triggered.connect(lambda: self.set_modified(True))
+        act_del.triggered.connect(self.onDelete)
 
         pos = self.btn_menu.mapToGlobal(QPoint(0, self.btn_menu.height()))
         menu.exec(pos)
 
-    def enable_rename_mode(self):
+    def enableRenameMode(self):
         # Determine what text to start with
-        active_task = self.task_manager.getActiveTask()
+        active_task = self.tasks.getActiveTask()
         if self.is_creating_new or not active_task:
             start_text = ""  # Start empty for new tasks
         else:
@@ -563,17 +509,13 @@ class TaskHeaderWidget(QWidget):
         self.task_name_edit.setStyleSheet("")
         self.task_name_edit.setToolTip("")
 
-    def save_rename(self):
+    def saveRename(self):
         if not self.task_name_edit.isVisible():
             return
 
         current_name = None if self.is_creating_new else self.btn_task.text().replace("*", "")
 
-        is_valid, result = validate_task_rename(
-            self.task_name_edit.text(),
-            current_name,
-            self.task_manager
-        )
+        is_valid, result = self.tasks.validateRename(self.task_name_edit.text(), current_name)
 
         if not is_valid:
             if self.task_name_edit.hasFocus():
@@ -581,20 +523,20 @@ class TaskHeaderWidget(QWidget):
                 self.task_name_edit.setToolTip(result)
                 return  # Stay in edit mode
             else:
-                self.cancel_rename()
+                self.cancelRename()
                 return
 
         new_name = result
 
         if new_name == current_name:
-            self.cancel_rename()
+            self.cancelRename()
             return
 
-        active_task = self.task_manager.getActiveTask()
+        active_task = self.tasks.getActiveTask()
         if self.is_creating_new or not active_task:
             self.is_creating_new = False
-            self.task_manager.createTask(new_name, set_as_active=True)
-            self.update_task_display()
+            self.tasks.createTask(new_name, set_as_active=True)
+            self.updateTaskDisplay()
         else:
             active_task.name = new_name
 
@@ -604,9 +546,9 @@ class TaskHeaderWidget(QWidget):
                 self.btn_task.setText(new_name)
 
         # Finish up
-        self.cancel_rename()
+        self.cancelRename()
 
-    def cancel_rename(self):
+    def cancelRename(self):
         """Helper to cleanly exit edit mode"""
         self.is_creating_new = False
         self.task_name_edit.hide()
@@ -616,11 +558,11 @@ class TaskHeaderWidget(QWidget):
 
     # --- Menu Actions ---
 
-    def on_add(self):
+    def onAdd(self):
         # Doesn't add a new one until task_name_edit is set
-        self.toggle_task_selector(False)
+        self.toggleSelectorPopup(False)
 
-        if not self.confirm_discard_changes():
+        if not self.confirmDiscardChanges():
             return
 
         self.is_creating_new = True
@@ -629,29 +571,28 @@ class TaskHeaderWidget(QWidget):
         self.task_name_edit.show()
         self.task_name_edit.setFocus()
 
-    def on_import(self):
-        fname, _ = QFileDialog.getOpenFileName(self, "Import Task", "", "Task Files (*.task)")
-        if fname:
-            print(f"Importing from {fname}")
+    def onImport(self):
+        filepath, _ = QFileDialog.getOpenFileName(self, "Import Task", "", "Task Files (*.task)")
+        if filepath:
+            self.tasks.importTask(filepath)
 
-    def on_duplicate(self):
-        if not self.confirm_discard_changes():
+    def onExport(self):
+        if not self.confirmDiscardChanges(): return
+        filepath, _ = QFileDialog.getSaveFileName(self, "Export Task", "", "Task Files (*.task)")
+        if filepath:
+            self.tasks.exportActiveTask(filepath)
+
+    def onDuplicate(self):
+        if not self.confirmDiscardChanges():
             return
 
-        new_name = "New Task"
-        if active_task := self.task_manager.getActiveTask():
-            new_name = generate_unique_name(active_task.name, self.task_manager)
+        if active_task := self.tasks.getActiveTask():
+            new_name = self.tasks.generateUniqueName(active_task.name)
+            self.tasks.createTask(new_name, set_as_active=True, serialized_steps=active_task.steps)
+            self.updateTaskDisplay()
 
-        self.task_manager.createTask(new_name, set_as_active=True)
-        self.update_task_display()
-
-    def on_export(self):
-        fname, _ = QFileDialog.getSaveFileName(self, "Export Macro", "", "Macro Files (*.json *.macro)")
-        if fname:
-            print(f"Exporting to {fname}")
-
-    def on_delete(self):
-        active_task = self.task_manager.getActiveTask()
+    def onDelete(self):
+        active_task = self.tasks.getActiveTask()
         if not active_task: return
 
         reply = QMessageBox.question(
@@ -659,35 +600,7 @@ class TaskHeaderWidget(QWidget):
             f"Are you sure you want to delete '{active_task.name}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
+
         if reply == QMessageBox.StandardButton.Yes:
-            self.task_manager.popTask()
-            self.update_task_display()
-
-
-# --- BOILERPLATE TO RUN IT ---
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-
-    # Create a container window to hold our widget
-    main_window = QWidget()
-    main_window.setWindowTitle("Macro Recorder UI")
-    main_window.resize(600, 400)
-
-    main_layout = QVBoxLayout(main_window)
-    main_layout.setContentsMargins(0, 0, 0, 0)
-
-    manager = TaskManager()
-    manager.createTask("Auto Clicker")
-    manager.createTask("Anti-Afk")
-    manager.createTask("Farm Resources")
-    manager.createTask("Burgers")
-
-    # Add our custom widget to the top
-    header = TaskHeaderWidget(manager)
-    main_layout.addWidget(header)
-
-    # Spacer to push it to the top
-    main_layout.addStretch()
-
-    main_window.show()
-    sys.exit(app.exec())
+            self.tasks.popTask()
+            self.updateTaskDisplay()

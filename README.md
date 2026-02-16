@@ -66,21 +66,22 @@ When you add a task, the engine returns a **Task Controller**. You can use this 
 
 ```python
     def __init__(self, macro_creator):
-        self.engine = macro_creator
-        # Save the controller to a variable
-        self.worker_ctrl = macro_creator.addRunTask(self.my_task)
-        # Add a variable so the user can choose to sleep "my_task" or not and set the default value to "True"
-        macro_creator.addVariable("Sleep My Task", bool, True, "Sleeps My Task On Execute")
-        macro_creator.addRunTask(self.manager_task)
+    self.engine = macro_creator
+    # Save the controller to a variable
+    self.worker_ctrl = macro_creator.addRunTask(self.my_task)
+    # Add a variable so the user can choose to sleep "my_task" or not and set the default value to "True"
+    macro_creator.addVar("Sleep My Task", bool, True, "Sleeps My Task On Execute")
+    macro_creator.addRunTask(self.manager_task)
 
-    def manager_task(self, controller):
-        # Log directly to the ui
-        controller.log("I am going to sleep")
-        # Get a user defined variable from the engine
-        if controller.getVar("Sleep My Task"):
-            self.worker_ctrl.pause() # Worker stops immediately
-            yield from taskSleep(2)
-            self.worker_ctrl.resume() # Worker continues
+
+def manager_task(self, controller):
+    # Log directly to the ui
+    controller.log("I am going to sleep")
+    # Get a user defined variable from the engine
+    if controller.getVar("Sleep My Task"):
+        self.worker_ctrl.pause()  # Worker stops immediately
+        yield from taskSleep(2)
+        self.worker_ctrl.resume()  # Worker continues
 
 ```
 

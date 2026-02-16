@@ -259,6 +259,11 @@ QPushButton#btn_save:hover {
     border: none;
 }
 
+QPushButton#btn_save:disabled{
+    background-color: $selection_color;
+    border: none;
+}
+
 #AltBgContainer {
     background-color: $alt_bg;
     border: 1px solid $alt_bg;

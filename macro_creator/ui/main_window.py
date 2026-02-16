@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt, Signal
 from pynput import keyboard
 
 from macro_creator.core.types_and_enums import LogPacket, LogLevel, LogErrorPacket
+from macro_creator.core.logger import global_logger
 from .tabs.recorder_tab import RecorderTab
 
 from .theme_manager import ThemeManager
@@ -23,12 +24,14 @@ class MainWindow(QMainWindow):
     pause_signal = Signal()
     hotkey_signal = Signal(str)
 
-    def __init__(self, name, task_manager):
+    def __init__(self, profile):
         self.app = QApplication(sys.argv)
         super().__init__()
         self.setWindowTitle(f"Macro Engine v1.5")
         self.resize(900, 700)
         self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint)
+
+        self.profile = profile
 
         # 1. Core UI Components
         self.overlay = TransparentOverlay(self)
@@ -43,15 +46,15 @@ class MainWindow(QMainWindow):
 
         # 3. Setup Dock & Toolbar
         self._setupStatusBar()
-        self._setupIntegratedHeader(name)
+        self._setupIntegratedHeader(profile.name)
         self._setupLogDock()
 
         # 4. Create Tabs
         self.tabs = QTabWidget()
 
-        self.tabs.addTab(RecorderTab(task_manager), "Recorder")
-        self.variables_tab = VariablesTab(self.overlay)
+        self.variables_tab = VariablesTab(profile.vars, self.overlay)
         self.tabs.addTab(self.variables_tab, "Variables")
+        self.tabs.addTab(RecorderTab(self.overlay, profile), "Recorder")
 
         self.main_layout.addWidget(self.tabs)
 
@@ -59,6 +62,7 @@ class MainWindow(QMainWindow):
         self.paused = False
 
         # 5. Connections
+        global_logger.log_emitted.connect(self.log)
         self.tabs.currentChanged.connect(self._onTabChanged)
         self.hotkey_signal.connect(self._onHotkey)
         self.listener = keyboard.GlobalHotKeys({
@@ -213,17 +217,11 @@ class MainWindow(QMainWindow):
         if should_show:
             self.btn_overlay.setText("Overlay: ON")
             self.btn_overlay.setStyleSheet("background-color: #d29922; color: #fff;")
-            self.overlay.show()
         else:
             self.btn_overlay.setText("Overlay: OFF")
             self.btn_overlay.setStyleSheet("")
-            self.overlay.hide()
 
-    def afterCaptureEnded(self, result=None):
-        self.variables_tab.afterCaptureEnded(result)
-        self.overlay.setClickThrough(True)
-        self.toggleOverlay()
-        self.show()
+        self.overlay.showing_geometry = should_show
 
     def _onHotkey(self, hotkey_id: str):
         if hotkey_id == "F6":
@@ -234,6 +232,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent):
         self.stop_signal.emit(True)
         self.overlay.destroy()
+        self.profile.save()
         event.accept()
 
     # --- LOGGING (Thread Safe) ---
@@ -253,12 +252,12 @@ class MainWindow(QMainWindow):
             self.console.append(f'[{timestamp}] <span style="color: {color};">[{task_id}] {text}</span>')
 
         elif isinstance(payload, LogErrorPacket):
-            trace_id = uuid.uuid4().hex
-            self.console.traceback_storage[trace_id] = payload.traceback
-            self.console.append(
-                f'<b style="color:darkred">CRITICAL ERROR in Task {payload.task_id}: {payload.message}</b> '
-                f'<a href="#id_{trace_id}" style="color:red;">[View Traceback]</a>'
-            )
+            message = f'<b style="color:darkred">CRITICAL ERROR in Task {payload.task_id}: {payload.message}</b> '
+            if payload.traceback:
+                trace_id = uuid.uuid4().hex
+                self.console.traceback_storage[trace_id] = payload.traceback
+                message += f'<a href="#id_{trace_id}" style="color:red;">[View Traceback]</a>'
+            self.console.append(message)
         elif isinstance(payload, str):
             self.console.append(payload)
 
@@ -270,10 +269,3 @@ class MainWindow(QMainWindow):
     def _formatLogParts(packet: LogPacket):
         # (Same logic as before, just compact)
         return " ".join([x.to_html() if hasattr(x, 'to_html') else str(x) for x in packet.parts])
-
-    # --- EXPOSED METHODS FOR ENGINE ---
-    def addSetupItem(self, name, config):
-        self.variables_tab.addVariable(name, config)
-
-    def refreshSetupItemView(self, config):
-        self.variables_tab.refreshVariable(config)

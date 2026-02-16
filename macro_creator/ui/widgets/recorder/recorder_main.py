@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QDrag, QPainter, QColor, QPen, QBrush, QPalette
 from PySide6.QtCore import Qt, QMimeData, QSize
 
-from macro_creator.core.timeline_handler import ActionType, TimelineData
+from macro_creator.core.data.timeline_handler import ActionType, TimelineData
 from macro_creator.ui.shared import DEFAULT_ICON_COLOR, SELECTED_COLOR, HoverButton
 
 if TYPE_CHECKING:
@@ -52,6 +52,7 @@ def createIconLabel(config_or_icon: str | ActionConfig, color_override: str=None
     lbl_icon.setPixmap(pixmap)
 
     return lbl_icon
+
 
 class RecorderToolbar(QWidget):
     def __init__(self):

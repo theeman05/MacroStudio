@@ -7,26 +7,26 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QDrag, QPainter, QColor, QPen, QBrush, QEnterEvent
 from PySide6.QtCore import Qt, QItemSelection, QTimer, QPoint, QEvent
 
-from macro_creator.core.timeline_handler import ActionType, TimelineData
-from macro_creator.ui.widgets.recorder.recorder_main import createIconLabel, HoverButton, createQtIcon, TRASH_ICON, \
-    GRIP_CONFIG, ACTION_TYPES, SELECTED_COLOR, DragPreviewWidget
-
-from macro_creator.ui.widgets.recorder.action_bindings import KeyCaptureEditor, MouseComboEditor, SneakyDbSpinBox, \
-    SneakyTextEditor
+from macro_creator.core.data import ActionType, TimelineData
+from .recorder_main import (createIconLabel, HoverButton, createQtIcon, TRASH_ICON, GRIP_CONFIG, ACTION_TYPES,
+                            SELECTED_COLOR, DragPreviewWidget)
+from .action_bindings import KeyCaptureEditor, SneakyDbSpinBox, SneakyTextEditor
+from .combo_line_editor import DualMouseEditor
 
 if TYPE_CHECKING:
     from macro_creator.ui.tabs.recorder_tab import RecorderTab
 
 ACTION_BINDINGS = {
     ActionType.KEYBOARD: KeyCaptureEditor,
-    ActionType.MOUSE: MouseComboEditor,
+    ActionType.MOUSE: DualMouseEditor,
     ActionType.DELAY: SneakyDbSpinBox,
     ActionType.TEXT: SneakyTextEditor,
 }
 
+
 class TimelineItemWidget(QWidget):
     """The complex row in the RIGHT timeline."""
-    def __init__(self, data: TimelineData):
+    def __init__(self, overlay, mouse_combo_model, data: TimelineData):
         super().__init__()
         action_type = data.action_type
 
@@ -51,7 +51,10 @@ class TimelineItemWidget(QWidget):
 
         # Text Logic
         binding = ACTION_BINDINGS.get(action_type)
-        self.action_widget = binding(data.value)
+        if binding is not DualMouseEditor:
+            self.action_widget = binding(self, data.value)
+        else:
+            self.action_widget = DualMouseEditor(self, data.value, overlay, mouse_combo_model)
 
         container_or_text_lbl = self.action_widget
         if detail:= data.detail:
@@ -177,7 +180,7 @@ class DroppableTimelineWidget(QListWidget):
             )
             QApplication.sendEvent(widget_under_mouse, enter_event)
 
-    def _isMoveAllowed(self, target_row):
+    def isMoveAllowed(self, target_row):
         """
         Check if moving the selected item(s) to 'target_row' violates
         any partner constraints (e.g. Key Down cannot go below Key Up).
@@ -196,12 +199,13 @@ class DroppableTimelineWidget(QListWidget):
             partner_row = self.row(partner_item)
             my_row = self.row(item)
 
-            if my_row < partner_row:
-                if target_row > partner_row:
-                    return False
-            elif my_row > partner_row:
-                if target_row <= partner_row:
-                    return False
+            # "Top" partner cannot be dropped below the "Bottom" partner
+            if my_row < partner_row < target_row:
+                return False
+
+            # "Bottom" partner cannot be dropped above the "Top" partner
+            if my_row > partner_row >= target_row:
+                return False
 
         return True
 
@@ -333,7 +337,7 @@ class DroppableTimelineWidget(QListWidget):
         row = self._calcDropRow(event.position().toPoint())
 
         # 2. Check if that spot is legal
-        if not self._isMoveAllowed(row):
+        if not self.isMoveAllowed(row):
             # INVALID: Hide the line and show 'Forbidden' cursor
             self._drag_target_row = -1
             self.viewport().update()
@@ -357,7 +361,7 @@ class DroppableTimelineWidget(QListWidget):
         # Get the row we calculated during dragMove
         insert_row = self._calcDropRow(event.position().toPoint())
 
-        if not self._isMoveAllowed(insert_row):
+        if not self.isMoveAllowed(insert_row):
             event.ignore()
             return
 
@@ -371,7 +375,7 @@ class DroppableTimelineWidget(QListWidget):
         if event.source() == self:
             start_row = self.currentRow()
             if start_row != insert_row:
-                self.recorder_tab.userMovesStep(start_row, insert_row)
+                self.recorder_tab.userMovesStep(insert_row)
             #super().dropEvent(event) Skip super call because recorder will handle the movement
         # CASE 2: External Drop (Palette)
         elif event.mimeData().hasText():
@@ -406,7 +410,7 @@ class DroppableTimelineWidget(QListWidget):
         return active_pair
 
     def paintEvent(self, event):
-        """Draw the list, then draw our custom Green Line on top."""
+        """Draw the list, then draw our custom line on top."""
         super().paintEvent(event)
 
         painter = QPainter(self.viewport())

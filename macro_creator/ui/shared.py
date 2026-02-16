@@ -1,6 +1,6 @@
 from typing import Union
 import qtawesome as qta
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import QTableWidgetItem, QLineEdit, QWidget, QPushButton, QLabel
 
@@ -62,3 +62,11 @@ def createIconLabel(icon_name: str, color: str=DEFAULT_ICON_COLOR, size=(30,30))
     lbl_icon.setPixmap(pixmap)
 
     return lbl_icon
+
+def _resetStyle(item, origin_style):
+    item.setStyleSheet(origin_style)
+
+def flashError(item):
+    original_style = item.styleSheet()
+    item.setStyleSheet("background-color: #FFCDD2;")
+    QTimer.singleShot(250, lambda: _resetStyle(item, original_style))

@@ -3,8 +3,8 @@ from enum import Enum, auto
 from typing import TYPE_CHECKING, TypeAlias, Callable, Generator, Tuple
 
 if TYPE_CHECKING:
-    from .gui_main import MainWindow
-    from .variable_config import VariableConfig
+    from macro_creator.ui.overlay import TransparentOverlay
+    from macro_creator.core.data.variable_config import VariableConfig
 
 class CaptureMode(Enum):
     POINT = auto()      # Single click
@@ -15,7 +15,7 @@ class CaptureTypeDef:
     mode: CaptureMode
     type_class: type
     tip: str
-    capture_handler: Callable[["MainWindow", "VariableConfig"], None]
+    capture_method: Callable[["TransparentOverlay", "VariableConfig"], None]
 
 class LogLevel(Enum):
     ERROR = auto()
@@ -31,7 +31,7 @@ class LogPacket:
 @dataclass
 class LogErrorPacket:
     message: str
-    traceback: str
+    traceback: str | None
     task_id: int
 
 class TaskAbortException(BaseException):

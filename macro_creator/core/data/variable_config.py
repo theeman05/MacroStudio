@@ -2,9 +2,9 @@ from enum import Enum
 
 from typing import Hashable
 
-from .type_handler import GlobalTypeHandler
-from .types_and_enums import CaptureMode
-from .capture_type_registry import GlobalCaptureRegistry
+from macro_creator.core.type_handler import GlobalTypeHandler
+from macro_creator.core.types_and_enums import CaptureMode
+from macro_creator.core.capture_type_registry import GlobalCaptureRegistry
 
 class VariableConfig:
     def __init__(self, data_type: CaptureMode | type, default_val=None, pick_hint: str=None):
@@ -18,7 +18,6 @@ class VariableConfig:
         self.data_type = GlobalCaptureRegistry.get(data_type).type_class if GlobalCaptureRegistry.containsMode(data_type) else data_type
         self.value = default_val
         self.hint = pick_hint
-        self.row: int | None = None # The row in the UI
 
     @classmethod
     def keyToStr(cls, key: Hashable):
@@ -32,21 +31,17 @@ class VariableConfig:
         """
         type_name = self.data_type.__name__
 
-        if self.value is None:
-            value_str = None
-        else:
+        value_str = None
+        if self.value is not None:
             try:
                 value_str = GlobalTypeHandler.toString(self.value)
             except Exception as e:
                 print(f"Error serializing {self}: {e}")
-                value_str = ""
 
-        serial = {
-            "type": type_name,
-            "value": value_str,
-        }
+        serial = {"type": type_name}
 
-        if self.hint: serial["hint"] = self.hint
+        GlobalTypeHandler.setIfEvals("value", value_str, serial)
+        GlobalTypeHandler.setIfEvals("hint", self.hint, serial)
 
         return serial
 
@@ -55,10 +50,14 @@ class VariableConfig:
         """Factory method to create a VariableConfig from saved JSON."""
         type_name = data.get("type", "str")
         value_data = data.get("value")
-        hint = data.get("hint", "")
+        hint = data.get("hint")
 
-        # Resolve the string "int" back to the class <int>
         target_type = GlobalTypeHandler.getTypeClass(type_name)
-        real_value = GlobalTypeHandler.fromString(target_type, value_data) if value_data is not None else None
+        real_value = None
+        if value_data is not None:
+            try:
+                real_value = GlobalTypeHandler.fromString(target_type, value_data)
+            except Exception as e:
+                print(f"Error serializing deserializing value for {type_name}: {e}")
 
         return VariableConfig(target_type, real_value, hint)
