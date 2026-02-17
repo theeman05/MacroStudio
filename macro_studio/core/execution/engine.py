@@ -67,7 +67,7 @@ class MacroStudio:
     def isRunningMacros(self):
         """
         Returns:
-            True if the creator is running any macros, false otherwise.
+            True if the app is running any macros, false otherwise.
         """
         return self._worker.running
 
