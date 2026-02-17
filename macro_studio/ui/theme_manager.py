@@ -1,7 +1,10 @@
 import importlib.resources
 from string import Template
 
-from . import templates
+from PySide6.QtGui import QColor, QPalette
+
+from macro_studio.ui import templates
+
 
 class ThemeManager:
     # Define palettes as Python dictionaries
@@ -19,6 +22,11 @@ class ThemeManager:
         "btn_press": "#2a2a2a",
         "btn_border": "#555555",
         "btn_border_h": "#666666",  # Hover border
+
+        # -- Generic Stuff ---
+        "selection_color": "#394873",
+        "selected_color": "#1158c7",
+        "selected_hover": "#007FF4",
 
         # --- Functional Buttons (Start/Stop/Etc) ---
         "btn_start_bg": "#2ea043",  # Green
@@ -47,14 +55,13 @@ class ThemeManager:
 
         # --- Table Widget ---
         "table_grid": "#333333",
-        "table_selection": "#264f78",
         "header_bg": "#333333",
         "header_border": "#1e1e1e",
         "header_text": "#cccccc",
 
         # --- Console ---
-        "console_bg": "#101010",  # Slightly darker than main bg
-        "console_text": "#f0f0f0"
+        "alt_bg": "#101010",  # Slightly darker than main bg
+        "console_text": "#f0f0f0",
     }
 
     LIGHT_THEME = {
@@ -72,8 +79,12 @@ class ThemeManager:
         "btn_border": "#cccccc",
         "btn_border_h": "#a0a0a0",
 
+        # -- Generic Labels ---
+        "selection_color": "#cce8ff",
+        "selected_color": "#1158c7",
+        "selected_hover": "#007FF4",
+
         # --- Functional Buttons ---
-        # I slightly brightened these to look better with dark text
         "btn_start_bg": "#45c458",  # Brighter Green
         "btn_start_border": "#2ea043",
         "btn_start_hover": "#36b04a",
@@ -100,19 +111,18 @@ class ThemeManager:
 
         # --- Table Widget ---
         "table_grid": "#e0e0e0",
-        "table_selection": "#cce8ff",  # Light Blue selection highlight
         "header_bg": "#e1e1e1",
         "header_border": "#d0d0d0",
         "header_text": "#000000",
 
         # --- Console ---
-        "console_bg": "#fafafa",  # Almost white
+        "alt_bg": "#fafafa",  # Almost white
         "console_text": "#24292f"
     }
 
     @staticmethod
     def applyTheme(app, palette_name="DARK"):
-        palette = ThemeManager.DARK_THEME if palette_name == "DARK" else ThemeManager.LIGHT_THEME
+        palette_dict = ThemeManager.DARK_THEME if palette_name == "DARK" else ThemeManager.LIGHT_THEME
 
         try:
             template_file = importlib.resources.files(templates).joinpath("style_template.qss")
@@ -122,6 +132,6 @@ class ThemeManager:
 
         # This looks for $key instead of {key}
         src = Template(content)
-        final_style = src.safe_substitute(**palette)
+        final_style = src.safe_substitute(**palette_dict)
 
         app.setStyleSheet(final_style)

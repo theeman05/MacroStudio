@@ -5,3 +5,6 @@ mss
 pillow
 pynput
 pyside6
+numpy
+qtawesome
+shiboken6

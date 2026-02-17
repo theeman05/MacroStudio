@@ -1,0 +1,283 @@
+QMainWindow {
+    background-color: $bg_primary;
+}
+
+QWidget {
+    color: $text_primary;
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 14px;
+}
+
+QTabWidget::pane {
+    border: 1px solid $btn_border;
+    top: -1px;
+}
+
+QLabel {
+    selection-color: $selection_color;
+}
+
+QLabel#header_label {
+    color: $selected_color;
+    font-weight: bold;
+}
+
+/* --- Header Container --- */
+#header_container {
+    background-color: $bg_secondary;
+    border-bottom: 1px solid $border_color;
+}
+
+#header_container QLabel {
+    color: #bbb;
+    font-weight: bold;
+    font-size: 15px;
+}
+
+/* --- Generic Buttons --- */
+QPushButton {
+    background-color: $btn_bg;
+    border: 1px solid $btn_border;
+    border-radius: 4px;
+    padding: 6px 12px;
+    color: $text_light;
+}
+
+QPushButton:hover {
+    background-color: $btn_hover;
+    border-color: $btn_border_h;
+}
+QPushButton:pressed {
+    background-color: $btn_press;
+}
+
+/* --- Specific Button Colors --- */
+QPushButton#btn_start {
+    background-color: $btn_start_bg;
+    border: 1px solid $btn_start_border;
+    font-weight: bold;
+}
+QPushButton#btn_start:hover {
+    background-color: $btn_start_hover;
+}
+
+QPushButton#btn_stop {
+    background-color: $btn_stop_bg;
+    border: 1px solid $btn_stop_border;
+}
+QPushButton#btn_stop:hover {
+    background-color: $btn_stop_hover;
+}
+
+QPushButton#btn_reset {
+    background-color: $btn_reset_bg;
+    border: 1px solid $btn_reset_border;
+}
+
+QPushButton#btn_pick {
+    background-color: $btn_pick_bg;
+    border: none;
+    border-radius: 2px;
+}
+QPushButton#btn_pick:hover {
+    background-color: $btn_pick_hover;
+}
+
+/* --- Progress Bar --- */
+QProgressBar {
+    border: 1px solid $progress_border;
+    border-radius: 4px;
+    text-align: center;
+    color: $text_primary;
+}
+QProgressBar::chunk {
+    background-color: $progress_chunk;
+    width: 20px;
+}
+
+/* --- DYNAMIC STATES (Paused) --- */
+QPushButton#btn_start[state="paused"] {
+    background-color: $btn_paused_bg;
+    border: 1px solid $btn_paused_border;
+}
+QPushButton#btn_start[state="paused"]:hover {
+    background-color: $btn_paused_hover;
+    border-color: $btn_paused_border;
+}
+
+QProgressBar[state="paused"]::chunk {
+    background-color: $progress_paused;
+}
+
+/* --- Table (Setup Steps) --- */
+QTableWidget {
+    background-color: $bg_secondary;
+    border: 1px solid $border_color;
+    gridline-color: $table_grid;
+    selection-background-color: $selection_color;
+    color: $text_primary;
+}
+QHeaderView::section {
+    background-color: $header_bg;
+    padding: 4px;
+    border: 1px solid $header_border;
+    color: $header_text;
+    font-weight: bold;
+}
+
+/* --- Console/Logs --- */
+QTextEdit, QTextBrowser {
+    background-color: $alt_bg;
+    border: 1px solid $border_color;
+    color: $console_text;
+    font-family: 'Consolas', monospace;
+    font-size: 12px;
+}
+
+/* --- Recorder Tab -- */
+QLabel#ActionTitle {
+    font-weight: bold;
+}
+
+QListWidget {
+    background-color: $alt_bg;
+    border: 1px solid $alt_bg;
+    border-radius: 4px;
+}
+
+DraggableListWidget::item{
+    border: none;
+    background-color: transparent;
+    border-radius: 4px;
+}
+
+DraggableListWidget::item:hover{
+    border: none;
+    background-color: $bg_secondary;
+    border-radius: 4px;
+}
+
+DroppableTimelineWidget::item:selected {
+    background-color: $selection_color;
+    border: 1px solid $alt_bg;
+    border-radius: 4px;
+}
+
+QCheckBox::indicator {
+    background-color: $btn_bg;
+    border: 1px solid $btn_border;
+    width: 18px; height: 18px;
+    border-radius: 4px;
+}
+
+QCheckBox::indicator:hover {
+    background-color: $btn_hover;
+}
+
+QCheckBox::indicator:checked {
+    background-color: $selected_color;
+    border: 1px solid $text_light;
+    border-radius: 4px;
+}
+
+QCheckBox::indicator:checked:hover {
+    background-color: $selected_hover;
+}
+
+TimelineItemWidget QCheckBox::indicator:unchecked {
+    background: $alt_bg;
+    border: none;
+}
+
+HoverButton {
+    background-color: transparent;
+    border: none;
+}
+
+HoverButton:hover {
+    background-color: transparent;
+    border: none;
+}
+
+#new_task_btn {
+    background-color: transparent;
+    border: none;
+    font-weight: bold;
+    text-decoration: underline;
+}
+
+#new_task_btn:hover {
+    color: $selected_color;
+    font-weight: bold;
+    background-color: transparent;
+    border: none;
+    text-decoration: underline;
+}
+
+QPushButton#SneakyButton {
+    background-color: transparent;
+    border: none;
+    font-weight: bold;
+    text-align: left;
+    padding-left: 0px;
+}
+
+QPushButton#SneakyButton:hover {
+    color: $selected_color;
+}
+
+QPushButton#SneakyButton[state="empty"] {
+    font-weight: normal;
+    color: $btn_border_h;
+}
+
+QPushButton#SneakyButton:hover[state="empty"] {
+    color: $selected_color;
+}
+
+QPushButton#SneakyButton[state="setting"] {
+    border: 2px solid $selected_color;
+}
+
+#SneakyInternalWidget {
+    background-color: transparent;
+    border: none;
+}
+
+QComboBox#SneakyInternalWidget {
+    padding-left: 5px;
+    padding-right: 5px;
+}
+
+QPushButton#btn_save{
+    background-color: $selected_color;
+    border: none;
+}
+
+QPushButton#btn_save:hover {
+    background-color: $selected_hover;
+    border: none;
+}
+
+QPushButton#btn_save:disabled{
+    background-color: $selection_color;
+    border: none;
+}
+
+#AltBgContainer {
+    background-color: $alt_bg;
+    border: 1px solid $alt_bg;
+    border-radius: 4px;
+}
+
+TaskSelectorPopup {
+    background-color: $bg_secondary;
+    border: 1px solid $border_color;
+    border-radius: 4px;
+}
+
+TextFunctionDialog {
+    background-color: $bg_secondary;
+    border: 1px solid $border_color;
+    border-radius: 4px;
+}

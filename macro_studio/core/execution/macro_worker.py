@@ -1,13 +1,14 @@
-import time, heapq, traceback
+import time, heapq
 from PySide6.QtCore import QThread, QMutex, QMutexLocker, Signal
 from typing import TYPE_CHECKING, List
 
-from .types_and_enums import LogLevel, LogPacket, LogErrorPacket
-from .pause_state import PauseState
+from macro_studio.core.types_and_enums import LogLevel
+from macro_studio.core.utils import global_logger
+from macro_studio.core.execution.pause_state import PauseState
 
 if TYPE_CHECKING:
-    from .task_controller import TaskController
-    from .engine import MacroCreator
+    from macro_studio.core.controllers.task_controller import TaskController
+    from macro_studio.core.execution.engine import MacroStudio
 
 
 def _handleTasksOnHard(controller: "TaskController", notified_tasks: set):
@@ -25,9 +26,8 @@ def _handleTasksOnHard(controller: "TaskController", notified_tasks: set):
 
 class MacroWorker(QThread):
     finished_signal = Signal()
-    log_signal = Signal(object) # The log message
 
-    def __init__(self, engine: "MacroCreator"):
+    def __init__(self, engine: "MacroStudio"):
         super().__init__()
         self.pause_state = PauseState()
         self.running = False
@@ -113,7 +113,7 @@ class MacroWorker(QThread):
                 for controller in forcefully_stopped:
                     self.logControllerAborted(controller)
             else:
-                self.log("System terminated all active tasks during hard pause.", level=LogLevel.WARN)
+                global_logger.log("System terminated all active tasks during interrupting pause.", level=LogLevel.WARN)
 
 
     def run(self):
@@ -167,10 +167,10 @@ class MacroWorker(QThread):
                 except StopIteration:
                     # Controller stopped successfully
                     controller.stop()
-                    self.log(f"Task {controller.cid} finished.")
+                    global_logger.log(f"Task {controller.cid} finished.")
                 except Exception as e:
                     controller.stop()
-                    self.logError(f"{str(e)}", trace=traceback.format_exc(), task_id=controller.cid)
+                    global_logger.logError(f"{str(e)}", task_id=controller.cid)
             else:
                 self.msleep(delay_ms)
 
@@ -227,21 +227,6 @@ class MacroWorker(QThread):
         self.wait()
         self.reloadControllers(None)
 
-    def log(self, *args, level: LogLevel=LogLevel.INFO, task_id: int=-1):
-        """
-        Sends a structured log packet to the ui.
-        Args:
-            args: The objects to be printed in the log. If mode is not ERROR, will cast the args automatically.
-            level: The log level to display at.
-            task_id: The task id associated with the packet.
-        """
-        payload = LogPacket(parts=args, level=level, task_id=task_id)
-        self.log_signal.emit(payload)
-
-    def logError(self, error_msg, trace="", task_id: int=-1):
-        """Sends a specialized LogErrorPacket object to the ui."""
-        payload = LogErrorPacket(message=error_msg, traceback=trace, task_id=task_id)
-        self.log_signal.emit(payload)
-
-    def logControllerAborted(self, controller: "TaskController"):
-        self.log(f"Task {controller.cid} aborted via unhandled Hard Stop.", level=LogLevel.WARN)
+    @staticmethod
+    def logControllerAborted(controller: "TaskController"):
+        global_logger.log(f"Task {controller.cid} aborted via unhandled Hard Stop.", level=LogLevel.WARN)

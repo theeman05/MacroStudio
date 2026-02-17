@@ -1,11 +1,14 @@
 from PySide6.QtWidgets import QWidget, QFrame, QHBoxLayout, QLabel, QPushButton
-from PySide6.QtCore import Qt, QPoint, QRect
+from PySide6.QtCore import Qt, QPoint, QRect, Signal, QEventLoop
 from PySide6.QtGui import QPainter, QPen, QColor, QKeyEvent
 from typing import TYPE_CHECKING
-from .types_and_enums import CaptureMode
+
+from macro_studio.core.types_and_enums import CaptureMode
+from macro_studio.core.controllers.capture_type_registry import GlobalCaptureRegistry
+from macro_studio.core.data import VariableConfig
 
 if TYPE_CHECKING:
-    from .gui_main import MainWindow
+    from .main_window import MainWindow
 
 TOOLBAR_STYLE = """
 QFrame#OverlayToolbar {
@@ -36,7 +39,24 @@ QPushButton:hover {
 """
 
 
+def _paintCapturable(painter, to_paint):
+    if isinstance(to_paint, VariableConfig):
+        to_paint = to_paint.value
+
+    if to_paint is None: return
+
+    if isinstance(to_paint, QPoint):
+        painter.drawEllipse(to_paint, 10, 10)
+    elif isinstance(to_paint, QRect):
+        painter.drawRect(to_paint)
+    else:
+        print(f'UNEXPECTED OBJECT {type(to_paint)} FOUND WHEN DRAWING')
+
+
 class TransparentOverlay(QWidget):
+    captureFinished = Signal()
+    cancelClicked = Signal()
+
     def __init__(self, main_window: "MainWindow"):
         super().__init__()
 
@@ -58,11 +78,25 @@ class TransparentOverlay(QWidget):
         self.show()
         self.setClickThrough(True)
         self.render_geometry = set()
+        self._showing_geometry = True
 
         self.current_mode: CaptureMode | None = None
         self.start_pos = None
         self.selection_rect: QRect | None = None
-        self.highlighted_config = None
+        self._highlighted: VariableConfig | QPoint | QRect | None = None
+        self._captured_data = None
+
+        self.cancelClicked.connect(self._finishCapture)
+
+    @property
+    def showing_geometry(self):
+        return self._showing_geometry
+
+    @showing_geometry.setter
+    def showing_geometry(self, value: bool):
+        if value != self._showing_geometry:
+            self._showing_geometry = value
+            self.update()
 
     def _setup_toolbar(self):
         """Creates the floating bar at the top center"""
@@ -77,7 +111,7 @@ class TransparentOverlay(QWidget):
         layout.addWidget(self.lbl_instruction)
 
         self.btn_cancel = QPushButton("X")
-        self.btn_cancel.clicked.connect(self.cancelCapture)
+        self.btn_cancel.clicked.connect(lambda: self.cancelClicked.emit())
         layout.addWidget(self.btn_cancel)
 
         self.toolbar.hide()
@@ -91,7 +125,20 @@ class TransparentOverlay(QWidget):
             self.toolbar.setGeometry(x, 20, w, h)
         super().resizeEvent(event)
 
-    def startCapture(self, mode: CaptureMode, display_text=None):
+    def raiseToolbar(self, display_text):
+        self.main_window.hide()
+        self.lbl_instruction.setText(display_text or "")
+        self.show()
+        self.toolbar.show()
+        self.toolbar.raise_()
+
+    def hideToolbar(self):
+        self.toolbar.hide()
+        self.setClickThrough(True)
+        self.main_window.show()
+
+    def captureData(self, mode: CaptureMode, display_text=None) -> QRect | QPoint | None:
+        """Shows the overlay and waits until capture is finished"""
         self.current_mode = mode
 
         if display_text is None:
@@ -100,28 +147,30 @@ class TransparentOverlay(QWidget):
             elif mode is CaptureMode.POINT:
                 display_text = "Click to set the point"
 
-        self.lbl_instruction.setText(display_text)
-
-        # Show Toolbar
-        self.show()
-        self.toolbar.show()
-        self.toolbar.raise_()  # Make sure it's on top of drawn rectangles
+        self.raiseToolbar(display_text)
 
         self.setClickThrough(False)
         self.setCursor(Qt.CursorShape.CrossCursor)
-        self.update()  # Trigger repaint
+        self.update()
 
-    def cancelCapture(self):
-        """Called when X is pressed"""
-        self.toolbar.hide()
+        loop = QEventLoop()
+        self.captureFinished.connect(loop.quit)
+        loop.exec()
 
-        # Reset Logic
+        # Finished capture when past loop.exec
+        capture_data = self._captured_data
+        self._captured_data = None
+
+        return capture_data
+
+    def _finishCapture(self, capture_data=None):
+        if self.current_mode is None: return
+        self._captured_data = capture_data
         self.start_pos = self.selection_rect = self.current_mode = None
         self.setCursor(Qt.CursorShape.ArrowCursor)
         self.update()
-
-        # Notify main window
-        self.main_window.afterCaptureEnded()
+        self.hideToolbar()
+        self.captureFinished.emit()
 
     def setClickThrough(self, enabled: bool):
         """
@@ -151,7 +200,7 @@ class TransparentOverlay(QWidget):
 
         if event.button() == Qt.MouseButton.LeftButton:
             if self.current_mode is CaptureMode.POINT:
-                self._finish_capture(event.pos())
+                self._finishCapture(event.pos())
             elif self.current_mode is CaptureMode.REGION:
                 # Start dragging
                 self.start_pos = event.pos()
@@ -168,22 +217,29 @@ class TransparentOverlay(QWidget):
         if self.current_mode is CaptureMode.REGION and self.start_pos:
             # Finish dragging
             final_rect = self.selection_rect
-            self._finish_capture(final_rect)
+            self._finishCapture(final_rect)
 
     def keyPressEvent(self, event: QKeyEvent):
         cur_mode = self.current_mode
         if cur_mode and event.key() == Qt.Key.Key_Escape:
-            self._finish_capture(None)
+            self._finishCapture(None)
 
-    def _finish_capture(self, result):
-        """Internal helper to clean up and notify main window"""
-        self.start_pos = self.selection_rect = self.current_mode = None
-        self.setCursor(Qt.CursorShape.ArrowCursor)
-        self.toolbar.hide()
+    def trySetHighlighted(self, config_name: str | QPoint | QRect):
+        prev = self._highlighted
+        if isinstance(config_name, str):
+            config = self.main_window.profile.vars.get(config_name)
+            if not config: return
+            self._highlighted = config if (config and GlobalCaptureRegistry.containsType(config.data_type)) else None
+        else:
+            self._highlighted = config_name
 
-        # Send result back to main window
-        self.main_window.afterCaptureEnded(result)
-        self.update()
+        if prev != self._highlighted:
+            self.update()
+
+    def removeHighlightedData(self):
+        if self._highlighted:
+            self._highlighted = None
+            self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -204,24 +260,15 @@ class TransparentOverlay(QWidget):
         else:
             # Show geometry when we're click-through
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            red_pen = QPen(QColor(255, 0, 0, 180), 2)
-            painter.setPen(red_pen)
-            highlighted_config = self.highlighted_config
-            for obj_conf in self.render_geometry:
-                val = obj_conf.value
-                if val:
-                    if highlighted_config == obj_conf:
-                        painter.setPen(highlight_pen)
-                        painter.setBrush(highlight_brush)
+            highlighted = self._highlighted
+            if self._showing_geometry:
+                painter.setPen(QPen(QColor(255, 0, 0, 180), 2))
+                for obj_conf in self.render_geometry:
+                    val = obj_conf.value
+                    if val and highlighted != obj_conf:
+                        _paintCapturable(painter, val)
 
-                    if isinstance(val, QPoint):
-                        painter.drawEllipse(val, 10, 10)
-                    elif isinstance(val, QRect):
-                        painter.drawRect(val)
-                    else:
-                        print(f'UNEXPECTED OBJECT {type(val)} FOUND WHEN DRAWING')
-
-                    if highlighted_config == obj_conf:
-                        # Reset the brush
-                        painter.setPen(red_pen)
-                        painter.setBrush(QColor(0, 0, 0, 0))
+            if highlighted:
+                painter.setPen(highlight_pen)
+                painter.setBrush(highlight_brush)
+                _paintCapturable(painter, highlighted)
