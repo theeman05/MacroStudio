@@ -1,5 +1,5 @@
 import time
-from macro_creator import taskSleep
+from macro_studio import taskSleep
 
 
 # 1. Define a standalone task function

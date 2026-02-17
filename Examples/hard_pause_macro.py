@@ -10,7 +10,7 @@ Key Concepts:
 3. Cleanup: Using 'finally' to ensure resources are closed on Stop.
 """
 
-from macro_creator import MacroCreator, TaskInterruptedException, taskSleep, taskWaitForResume
+from macro_studio import MacroStudio, TaskInterruptedException, taskSleep, taskWaitForResume
 
 class DatabaseUpdaterTask:
     """
@@ -84,7 +84,7 @@ def runSafeTask(controller):
     yield from task.run(controller)
 
 if __name__ == '__main__':
-    creator = MacroCreator("Database Updater Macro")
+    creator = MacroStudio("Database Updater Macro")
 
     creator.addRunTask(runSafeTask)
 

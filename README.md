@@ -1,14 +1,14 @@
-# Python Macro Creator
+# Python Macro Studio
 
 ![License](https://img.shields.io/badge/license-GPLv3-blue.svg) ![Python](https://img.shields.io/badge/python-3.10%2B-blue) ![Status](https://img.shields.io/badge/status-Active%20Development-green) [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Donate-yellow.svg)](https://buymeacoffee.com/dbhs)
 
 **Limitless automation, powered by Python.**
 
-The **Python Macro Creator** is a robust automation framework that bridges the gap between simple macro recorders and complex software development. Unlike traditional click-recorders, this engine allows you to script logic in pure Python, giving you access to the full power of the language, from computer vision (OpenCV) to API requests while managing the lifecycle of your tasks through a user-friendly GUI.
+The **Python Macro Studio** is a robust automation framework that bridges the gap between simple macro recorders and complex software development. Unlike traditional click-recorders, this engine allows you to script logic in pure Python, giving you access to the full power of the language, from computer vision (OpenCV) to API requests while managing the lifecycle of your tasks through a user-friendly GUI.
 
 ## 🚀 Key Features
 
-### 🐍 Infinite Possibilities
+### ♾️ Infinite Possibilities
 If you can code it in Python, you can automate it. Import any library, use complex logic, and interact with the OS at a deep level. You are not limited to "click here, wait 5 seconds."
 
 ### 🎛️ Granular Task Control
@@ -41,7 +41,7 @@ The most efficient way to write tasks is using Python Generators. This allows th
 * **Key Rule:** Use `yield from taskSleep(seconds)` instead of `time.sleep()` in standard tasks.
 
 ```python
-from macro_creator import taskSleep
+from macro_studio import taskSleep
 
 
 def my_task():
@@ -53,10 +53,9 @@ def my_task():
 
 
 class BasicMacro:
-    def __init__(self, macro_creator):
-        self.engine = macro_creator
-        # Add the task to the creator
-        macro_creator.addRunTask(my_task)
+    def __init__(self, studio):
+        # Add the task to the studio
+        studio.addRunTask(my_task)
 
 ```
 
@@ -65,13 +64,13 @@ class BasicMacro:
 When you add a task, the engine returns a **Task Controller**. You can use this object to pause, resume, or stop other tasks dynamically.
 
 ```python
-    def __init__(self, macro_creator):
-    self.engine = macro_creator
+    def __init__(self, studio):
+    self.studio = studio
     # Save the controller to a variable
-    self.worker_ctrl = macro_creator.addRunTask(self.my_task)
+    self.worker_ctrl = studio.addRunTask(self.my_task)
     # Add a variable so the user can choose to sleep "my_task" or not and set the default value to "True"
-    macro_creator.addVar("Sleep My Task", bool, True, "Sleeps My Task On Execute")
-    macro_creator.addRunTask(self.manager_task)
+    studio.addVar("Sleep My Task", bool, True, "Sleeps My Task On Execute")
+    studio.addRunTask(self.manager_task)
 
 
 def manager_task(self, controller):
@@ -93,7 +92,7 @@ Sometimes you need to run blocking code (like heavy calculations or network requ
 
 ```python
 import threading
-from macro_creator import taskSleep, taskAwaitThread
+from macro_studio import taskSleep, taskAwaitThread
 
 
 # 1. Define the function to run in the thread
@@ -112,11 +111,11 @@ def launcher(controller):
 
 
 class ThreadMacro:
-    def __init__(self, macro_creator):
+    def __init__(self, studio):
         # 2. Add a task that spawns the thread
         # We pass 'self.launcher' so we can get its controller
-        self.engine = macro_creator
-        self.controller = macro_creator.addRunTask(launcher)
+        self.studio = studio
+        self.controller = studio.addRunTask(launcher)
 
 ```
 
@@ -125,16 +124,16 @@ class ThreadMacro:
 Launch the GUI. Your tasks and variables will automatically appear.
 
 ```python
-from macro_creator import MacroCreator
+from macro_studio import MacroStudio
 from Examples.basic_macro import BasicMacro
 
 if __name__ == "__main__":
-    creator = MacroCreator(macro_name="Basic Macro Example")
+    studio = MacroStudio(macro_name="Basic Macro Example")
 
     # Add steps and tasks from BasicMacro
-    BasicMacro(creator)
+    BasicMacro(studio)
 
-    creator.launch()
+    studio.launch()
 
 ```
 
@@ -167,7 +166,8 @@ The Engine uses exceptions to control your tasks. You must handle these correctl
 To make a robust loop that survives an interruption, wrap your logic in a `try/except` block and delegate control to `taskWaitForResume`.
 
 ```python
-from macro_creator import TaskInterruptedException, taskSleep, taskWaitForResume
+from macro_studio import TaskInterruptedException, taskSleep, taskWaitForResume
+
 
 def task_count_to_ten():
     counter = 0
@@ -180,9 +180,9 @@ def task_count_to_ten():
             # 2. INTERRUPTED! The task was interrupted while paused.
             # We yield to the pause handler so the engine waits here.
             yield from taskWaitForResume()
-            
+
             # 3. When we return here, the loop continues naturally.
-        
+
         counter += 1
 
     print("Task finished successfully!")
@@ -243,14 +243,15 @@ def task_write_log(controller):
 Swallowing the exception causes the thread to stay alive as a "zombie" process, continuing to run even after the user thinks they stopped it.
 
 ```python
-from macro_creator import TaskAbortException
+from macro_studio import TaskAbortException
+
 
 def task_zombie_log(controller):
     while True:
         try:
             controller.sleep(1)
             do_work()
-            
+
         except TaskAbortException as e:
             # ⛔ DANGER: You caught the Stop signal and only printed it!
             # The loop will just spin around and run again.
@@ -265,7 +266,7 @@ def task_zombie_log(controller):
 Registering a new type is as simple as adding a decorator. You define how to **Read (Parse)** and **Write (Format)** the value, and the engine handles the rest.
 
 ```python
-from macro_creator import register_handler
+from macro_studio import register_handler
 
 
 @register_handler
@@ -331,7 +332,7 @@ Contributions are welcome! Whether you are fixing bugs, adding new features, or 
 
 ## ☕ Support the Project
 
-If you find this creator helpful and want to support its development, consider buying me a coffee! It helps keep the updates coming.
+If you find this studio helpful and want to support its development, consider buying me a coffee! It helps keep the updates coming.
 
 <a href="https://buymeacoffee.com/dbhs" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 

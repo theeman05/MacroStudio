@@ -1,5 +1,5 @@
 import time
-from macro_creator import MacroCreator, TaskAbortException, TaskInterruptedException, taskAwaitThread, taskSleep
+from macro_studio import MacroStudio, TaskAbortException, TaskInterruptedException, taskAwaitThread, taskSleep
 
 
 def _taskInThread(controller):
@@ -42,7 +42,7 @@ def _threadedTask(controller):
     yield from taskAwaitThread(_taskInThread, controller=controller)
 
 class ThreadMacro:
-    def __init__(self, creator: MacroCreator):
+    def __init__(self, creator: MacroStudio):
         self.engine = creator
 
         # Add run tasks to the creator
