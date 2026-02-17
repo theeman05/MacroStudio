@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QEvent, QTimer
 
-from macro_creator.core.capture_type_registry import GlobalCaptureRegistry
+from macro_creator.core.controllers.capture_type_registry import GlobalCaptureRegistry
 from macro_creator.ui.widgets.variable_table_model import VariableTableModel
 
 if TYPE_CHECKING:

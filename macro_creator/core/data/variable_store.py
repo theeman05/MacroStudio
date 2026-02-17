@@ -4,7 +4,7 @@ from PySide6.QtCore import Signal
 from .base_store import BaseStore
 from .variable_config import VariableConfig
 from macro_creator.core.types_and_enums import CaptureMode
-from macro_creator.core.capture_type_registry import GlobalCaptureRegistry
+from macro_creator.core.controllers.capture_type_registry import GlobalCaptureRegistry
 
 
 class VariableStore(BaseStore):

@@ -6,7 +6,7 @@ from PySide6.QtGui import QKeySequence
 from PySide6.QtCore import Qt, Signal, QEvent, QTimer
 
 from macro_creator.ui.shared import setBtnState
-from macro_creator.core.data.timeline_handler import MouseFunction
+from macro_creator.core.recording.timeline_handler import MouseFunction
 
 
 EditorWidget = Union[QPushButton, QComboBox, QTextEdit, QDoubleSpinBox, QSpinBox, QStackedWidget]

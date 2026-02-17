@@ -4,12 +4,14 @@ from PySide6.QtGui import QUndoStack
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,QListWidgetItem)
 from PySide6.QtCore import QSize
 
-from macro_creator.core.input_recorder import InputRecorder
-from macro_creator.core.data.timeline_handler import (
+from macro_creator.core.utils import global_logger
+from macro_creator.core.recording.input_recorder import InputRecorder
+from macro_creator.core.recording.timeline_handler import (
     TimelineModel, TimelineData, AddStepCommand, MoveStepsCommand, ChangeStepCommand, RemoveStepCommand)
 from macro_creator.ui.widgets.recorder import (
     ActionType, PaletteItemWidget, DraggableListWidget, RecorderToolbar, TimelineItemWidget, DroppableTimelineWidget,
     TaskHeaderWidget, MousePosComboBoxModel)
+from macro_creator.ui.widgets.lock_overlay import LockOverlay
 
 if TYPE_CHECKING:
     from macro_creator.core.data.profile import Profile
@@ -32,6 +34,8 @@ class RecorderTab(QWidget):
         self.mouse_combo_model = MousePosComboBoxModel(profile.vars)
         self.undo_stack = QUndoStack(self)
         self.input_recorder = InputRecorder()
+
+        self.lock_overlay = LockOverlay(self)
         self.header_widget = TaskHeaderWidget(profile.tasks)
 
         layout_widget = QWidget()
@@ -41,6 +45,8 @@ class RecorderTab(QWidget):
 
         self.total_duration = 0
         self.index_on_save = 0
+        self._stack_count_before = 0
+        self._timeline_count_before = 0
         self.palette_drag_action = None
 
         self._setupPalette()
@@ -92,6 +98,14 @@ class RecorderTab(QWidget):
 
         self.displayActiveTask()
 
+    def setEnabled(self, arg__1):
+        super().setEnabled(arg__1)
+        if arg__1:
+            self.lock_overlay.hide()
+        else:
+            self.toggleRecording(False)
+            self.lock_overlay.show()
+
     def _updateLabels(self):
         self.toolbar.btn_undo.setEnabled(self.undo_stack.canUndo())
         self.toolbar.btn_redo.setEnabled(self.undo_stack.canRedo())
@@ -118,7 +132,7 @@ class RecorderTab(QWidget):
         for i in range(self.timeline_model.count()):
             item = self.timeline_list.item(i)
             if not item:
-                print("ERROR WHILE SAVING")
+                global_logger.logError(f"Could not save due to step at index '{i}'")
                 return
             widget = self.timeline_list.itemWidget(item)
             self._tryUpdatePartnerData(widget)
@@ -359,38 +373,45 @@ class RecorderTab(QWidget):
 
     def toggleRecording(self, record: bool=None,btn_press=False):
         was_recording = self.input_recorder.is_recording
-        if self.isVisible() or not record or was_recording:
-            if record is None:
-                record = not was_recording
-            elif (record and was_recording) or not (record or was_recording):
-                return
 
-            if record:
-                self.overlay.raiseToolbar("Stop Recording Task [F8]")
-                self.overlay.cancelClicked.connect(self._onStopClicked)
-                self.undo_stack.beginMacro("Record Steps")
-                self.input_recorder.start(self.timeline_model.count())
-            else:
-                self.overlay.hideToolbar()
-                self.overlay.cancelClicked.disconnect(self._onStopClicked)
-                self.input_recorder.stop()
-                # Trim the mouse stuff from click finish
-                if btn_press:
-                    for _ in range(4):
-                        row_count = self.timeline_model.count()
-                        if row_count == 0:
-                            break
+        if record is None: record = not was_recording
+        # Prevent double starting or stopping
+        if record == was_recording: return
+        # Don't allow if trying to record and tab is not [visible or enabled]
+        if record and not (self.isVisible() and self.isEnabled()): return
 
-                        last_idx = row_count - 1
-                        last_step = self.timeline_model.getStep(last_idx)
+        if record:
+            self._stack_count_before = self.undo_stack.count()
+            self._timeline_count_before = self.timeline_model.count()
+            self.overlay.raiseToolbar("Stop Recording Task [F8]")
+            self.overlay.cancelClicked.connect(self._onStopClicked)
+            self.undo_stack.beginMacro("Record Steps")
+            self.input_recorder.start(self._timeline_count_before)
+        else:
+            self.overlay.hideToolbar()
+            self.overlay.cancelClicked.disconnect(self._onStopClicked)
+            self.input_recorder.stop()
+            # Trim the mouse stuff from click finish
+            if btn_press:
+                for _ in range(4):
+                    row_count = self.timeline_model.count()
+                    if row_count == 0:
+                        break
 
-                        is_delay = last_step.action_type == ActionType.DELAY
+                    last_idx = row_count - 1
+                    last_step = self.timeline_model.getStep(last_idx)
 
-                        is_left_click = (last_step.action_type == ActionType.MOUSE and "LEFT_CLICK" in last_step.value[0])
+                    is_delay = last_step.action_type == ActionType.DELAY
 
-                        if is_delay or is_left_click:
-                            self.undo_stack.push(RemoveStepCommand(model=self.timeline_model, index=last_idx))
-                        else:
-                            break
+                    is_left_click = (last_step.action_type == ActionType.MOUSE and "LEFT_CLICK" in last_step.value[0])
 
-                self.undo_stack.endMacro()
+                    if is_delay or is_left_click:
+                        self.undo_stack.push(RemoveStepCommand(model=self.timeline_model, index=last_idx))
+                    else:
+                        break
+
+            self.undo_stack.endMacro()
+
+            # Undo if no steps were actually added
+            if self.undo_stack.count() > self._stack_count_before and self.timeline_model.count() == self._timeline_count_before:
+                self.undo_stack.undo()

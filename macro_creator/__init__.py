@@ -1,8 +1,8 @@
-from .core.engine import MacroCreator
-from .core.task_controller import TaskController
+from macro_creator.core.execution.engine import MacroCreator
+from macro_creator.core.controllers.task_controller import TaskController
 from .core.types_and_enums import CaptureMode, TaskInterruptedException, TaskAbortException, LogLevel
 from macro_creator.core.data.variable_config import VariableConfig
-from .core.type_handler import GlobalTypeHandler, register_handler
+from macro_creator.core.controllers.type_handler import GlobalTypeHandler, register_handler
 from .actions import taskSleep, taskWaitForResume, taskAwaitThread, taskHoldKey, taskMouseClick
 
 __all__ = [

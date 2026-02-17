@@ -2,13 +2,13 @@ import time, heapq
 from PySide6.QtCore import QThread, QMutex, QMutexLocker, Signal
 from typing import TYPE_CHECKING, List
 
-from .types_and_enums import LogLevel
-from .logger import global_logger
-from .pause_state import PauseState
+from macro_creator.core.types_and_enums import LogLevel
+from macro_creator.core.utils import global_logger
+from macro_creator.core.execution.pause_state import PauseState
 
 if TYPE_CHECKING:
-    from .task_controller import TaskController
-    from .engine import MacroCreator
+    from macro_creator.core.controllers.task_controller import TaskController
+    from macro_creator.core.execution.engine import MacroCreator
 
 
 def _handleTasksOnHard(controller: "TaskController", notified_tasks: set):

@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QDrag, QPainter, QColor, QPen, QBrush, QEnterEvent
 from PySide6.QtCore import Qt, QItemSelection, QTimer, QPoint, QEvent
 
-from macro_creator.core.data import ActionType, TimelineData
+from macro_creator.core.recording import ActionType, TimelineData
 from .recorder_main import (createIconLabel, HoverButton, createQtIcon, TRASH_ICON, GRIP_CONFIG, ACTION_TYPES,
                             SELECTED_COLOR, DragPreviewWidget)
 from .action_bindings import KeyCaptureEditor, SneakyDbSpinBox, SneakyTextEditor

@@ -1,12 +1,12 @@
 import sys
 from typing import Hashable
 
-from .task_controller import TaskController
-from .types_and_enums import TaskFunc, LogLevel, CaptureMode
-from .macro_worker import MacroWorker
-from .data import Profile
-from .logger import global_logger
+from macro_creator.core.controllers.task_controller import TaskController
+from macro_creator.core.types_and_enums import TaskFunc, LogLevel, CaptureMode
+from macro_creator.core.data import Profile
+from macro_creator.core.utils import global_logger
 from macro_creator.ui.main_window import MainWindow
+from .macro_worker import MacroWorker
 
 class MacroCreator:
     def __init__(self, macro_name: str):

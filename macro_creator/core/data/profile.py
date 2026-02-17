@@ -1,10 +1,10 @@
-import json, os
+import os
 
 from .base_store import BaseStore
 from .task_store import TaskStore
 from .variable_store import VariableStore
-from macro_creator.core.type_handler import GlobalTypeHandler
-from macro_creator.core.file_io import FileIO
+from macro_creator.core.controllers.type_handler import GlobalTypeHandler
+from macro_creator.core.utils import FileIO
 
 
 class Profile:

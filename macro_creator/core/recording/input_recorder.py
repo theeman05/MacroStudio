@@ -3,7 +3,7 @@ from PySide6.QtCore import Signal, QObject, QPoint, QMutex, QMutexLocker
 from pynput import mouse, keyboard
 from pynput.keyboard import Key
 
-from macro_creator.core.data.timeline_handler import TimelineData, ActionType, MouseFunction, BUTTON_TO_FUNCTION_MAP
+from .timeline_handler import TimelineData, ActionType, MouseFunction, BUTTON_TO_FUNCTION_MAP
 
 
 def _formatKey(key):

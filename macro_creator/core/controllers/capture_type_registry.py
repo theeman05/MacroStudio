@@ -1,7 +1,7 @@
 from PySide6.QtCore import QRect, QPoint
 
 from typing import TYPE_CHECKING
-from .types_and_enums import CaptureTypeDef, CaptureMode
+from macro_creator.core.types_and_enums import CaptureTypeDef, CaptureMode
 
 if TYPE_CHECKING:
     from macro_creator.ui.overlay import TransparentOverlay

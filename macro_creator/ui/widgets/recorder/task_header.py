@@ -7,7 +7,6 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
 from PySide6.QtCore import Qt, QPoint, QEvent, Signal
 from PySide6.QtGui import QCursor
 
-from macro_creator.core.logger import global_logger
 from macro_creator.ui.shared import HoverButton, createIconLabel, SELECTED_COLOR
 
 if TYPE_CHECKING:

@@ -5,7 +5,7 @@ from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QUndoCommand
 from pynput.mouse import Button
 
-from macro_creator.core.type_handler import GlobalTypeHandler
+from macro_creator.core.controllers.type_handler import GlobalTypeHandler
 
 
 class ActionType(str, Enum):
@@ -26,7 +26,6 @@ class MouseFunction(str, Enum):
     MOUSE_5 = "Mouse Button 5"
 
 MOUSE_ACTION_MAP = {
-    # 1. Physical Buttons
     MouseFunction.LEFT_CLICK: Button.left,
     MouseFunction.RIGHT_CLICK: Button.right,
     MouseFunction.SCROLL_CLICK: Button.middle,

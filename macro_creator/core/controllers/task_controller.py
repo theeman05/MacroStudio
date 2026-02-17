@@ -3,12 +3,12 @@ import time
 from PySide6.QtCore import QMutex, QMutexLocker
 from typing import TYPE_CHECKING, Generator, Hashable
 
-from .pause_state import PauseState
-from .types_and_enums import TaskFunc, TaskAbortException, TaskInterruptedException, LogLevel
-from .logger import global_logger
+from macro_creator.core.execution.pause_state import PauseState
+from macro_creator.core.types_and_enums import TaskFunc, TaskAbortException, TaskInterruptedException, LogLevel
+from macro_creator.core.utils import global_logger
 
 if TYPE_CHECKING:
-    from .macro_worker import MacroWorker
+    from macro_creator.core.execution.macro_worker import MacroWorker
 
 class TaskController:
     def __init__(self, scheduler: "MacroWorker", task_func: TaskFunc, task_id: int):

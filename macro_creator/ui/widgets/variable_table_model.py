@@ -2,8 +2,8 @@ from typing import TYPE_CHECKING, Union
 from PySide6.QtCore import QAbstractTableModel, Qt, QModelIndex, QTimer
 from PySide6.QtGui import QBrush, QColor
 
-from macro_creator.core.capture_type_registry import GlobalCaptureRegistry
-from macro_creator.core.type_handler import GlobalTypeHandler
+from macro_creator.core.controllers.capture_type_registry import GlobalCaptureRegistry
+from macro_creator.core.controllers.type_handler import GlobalTypeHandler
 from macro_creator.ui.shared import EMPTY_VALUE_STR, SELECTED_COLOR
 
 if TYPE_CHECKING:

@@ -9,9 +9,8 @@ from PySide6.QtCore import Qt, Signal
 from pynput import keyboard
 
 from macro_creator.core.types_and_enums import LogPacket, LogLevel, LogErrorPacket
-from macro_creator.core.logger import global_logger
+from macro_creator.core.utils import global_logger
 from .tabs.recorder_tab import RecorderTab
-
 from .theme_manager import ThemeManager
 from .tabs.variables_tab import VariablesTab
 from .overlay import TransparentOverlay
@@ -32,9 +31,13 @@ class MainWindow(QMainWindow):
         self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint)
 
         self.profile = profile
+        self.running = False
+        self.paused = False
 
         # 1. Core UI Components
         self.overlay = TransparentOverlay(self)
+        self.variables_tab = VariablesTab(profile.vars, self.overlay)
+        self.recorder_tab = RecorderTab(self.overlay, profile)
         ThemeManager.applyTheme(self)
 
         # 2. Central widget
@@ -51,16 +54,9 @@ class MainWindow(QMainWindow):
 
         # 4. Create Tabs
         self.tabs = QTabWidget()
-
-        self.variables_tab = VariablesTab(profile.vars, self.overlay)
         self.tabs.addTab(self.variables_tab, "Variables")
-        self.recorder_tab = RecorderTab(self.overlay, profile)
         self.tabs.addTab(self.recorder_tab, "Recorder")
-
         self.main_layout.addWidget(self.tabs)
-
-        self.running = False
-        self.paused = False
 
         # 5. Connections
         global_logger.log_emitted.connect(self.log)
@@ -188,6 +184,7 @@ class MainWindow(QMainWindow):
         self.running = True
         self.paused = False
         self._updateStateVisuals("INTERRUPT (F6)", "RUNNING", 0)
+        self.recorder_tab.setEnabled(False)
 
     def pauseMacroVisuals(self):
         self.paused = True
@@ -204,6 +201,7 @@ class MainWindow(QMainWindow):
         self._updateStateVisuals("START (F6)", "IDLE", 100)
         self.progress.setValue(0)
         self.stop_signal.emit(False)
+        self.recorder_tab.setEnabled(True)
 
     def _updateStateVisuals(self, btn_text: str, status_text: str, progress: int):
         self.btn_start.setText(btn_text)

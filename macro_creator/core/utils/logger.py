@@ -1,7 +1,7 @@
 from traceback import format_exc
 from PySide6.QtCore import QObject, Signal
 
-from .types_and_enums import LogLevel, LogPacket, LogErrorPacket
+from macro_creator.core.types_and_enums import LogLevel, LogPacket, LogErrorPacket
 
 
 class _AppLogger(QObject):
