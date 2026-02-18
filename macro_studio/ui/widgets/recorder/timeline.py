@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QDrag, QPainter, QColor, QPen, QBrush, QEnterEvent
 from PySide6.QtCore import Qt, QItemSelection, QTimer, QPoint, QEvent
 
-from macro_studio.core.recording import ActionType, TimelineData
+from macro_studio.core.recording import ActionType, TimelineStep
 from .recorder_main import (createIconLabel, HoverButton, createQtIcon, TRASH_ICON, GRIP_CONFIG, ACTION_TYPES,
                             SELECTED_COLOR, DragPreviewWidget)
 from .action_bindings import KeyCaptureEditor, SneakyDbSpinBox, SneakyTextEditor
@@ -26,7 +26,7 @@ ACTION_BINDINGS = {
 
 class TimelineItemWidget(QWidget):
     """The complex row in the RIGHT timeline."""
-    def __init__(self, overlay, mouse_combo_model, data: TimelineData):
+    def __init__(self, overlay, mouse_combo_model, data: TimelineStep):
         super().__init__()
         action_type = data.action_type
 
@@ -382,7 +382,7 @@ class DroppableTimelineWidget(QListWidget):
             action_type = self.recorder_tab.palette_drag_action
             self.recorder_tab.palette_drag_action = None
             detail = 1 if ACTION_TYPES[action_type].pairable else None
-            self.recorder_tab.userAddsStep(insert_row, TimelineData(
+            self.recorder_tab.userAddsStep(insert_row, TimelineStep(
                 action_type=action_type,
                 detail=detail,
             ))

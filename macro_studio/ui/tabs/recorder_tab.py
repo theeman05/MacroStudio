@@ -7,7 +7,7 @@ from PySide6.QtCore import QSize
 from macro_studio.core.utils import global_logger
 from macro_studio.core.recording.input_recorder import InputRecorder
 from macro_studio.core.recording.timeline_handler import (
-    TimelineModel, TimelineData, AddStepCommand, MoveStepsCommand, ChangeStepCommand, RemoveStepCommand)
+    TimelineModel, TimelineStep, AddStepCommand, MoveStepsCommand, ChangeStepCommand, RemoveStepCommand, MouseFunction)
 from macro_studio.ui.widgets.recorder import (
     ActionType, PaletteItemWidget, DraggableListWidget, RecorderToolbar, TimelineItemWidget, DroppableTimelineWidget,
     TaskHeaderWidget, MousePosComboBoxModel)
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 NUM_MATCH_REGEX = r"([\d\.]+)"
 
-def getStepDuration(timeline_data: TimelineData):
+def getStepDuration(timeline_data: TimelineStep):
     if timeline_data.action_type != ActionType.DELAY: return None
     return timeline_data.value or 0
 
@@ -151,7 +151,7 @@ class RecorderTab(QWidget):
             widget.timeline_data.partner_idx = self.getItemRow(widget.partner_item)
 
     # --- User Actions (Create Commands) ---
-    def userAddsStep(self, insert_at, data: TimelineData, try_insert_pair=1, dupe_lol=False):
+    def userAddsStep(self, insert_at, data: TimelineStep, try_insert_pair=1, dupe_lol=False):
         if insert_at is None: insert_at = self.timeline_model.count()
         self.undo_stack.beginMacro(f"{"Add" if not dupe_lol else "Duplicate"} {data.action_type.value.title()}")
         try:
@@ -161,7 +161,7 @@ class RecorderTab(QWidget):
                 # Might need to add before pushing? Depends on if clone data or not when command created
                 data.partner_idx = insert_at + 1
                 # Push the partner to the stack
-                self.undo_stack.push(AddStepCommand(self.timeline_model, data.partner_idx, TimelineData(
+                self.undo_stack.push(AddStepCommand(self.timeline_model, data.partner_idx, TimelineStep(
                     action_type=data.action_type,
                     value=data.value,
                     detail=data.detail+1,
@@ -177,7 +177,7 @@ class RecorderTab(QWidget):
         # Always do upper first
         if widget.partner_item: detail = insert_pair = 1
 
-        self.userAddsStep(start_idx, TimelineData(
+        self.userAddsStep(start_idx, TimelineStep(
             action_type=widget.action_type,
             value=widget.action_widget.value,
             detail=detail
@@ -206,7 +206,20 @@ class RecorderTab(QWidget):
 
     def userChangesStep(self, item, new_value):
         index = self.getItemRow(item)
-        self.undo_stack.push(ChangeStepCommand(model=self.timeline_model,index=index,new_value=new_value))
+        widget = self.timeline_list.itemWidget(item)
+        timeline_data = widget.timeline_data
+        if (timeline_data.action_type == ActionType.MOUSE and widget.partner_item and
+                (new_value[0] == MouseFunction.SCROLL_UP.name or
+                 new_value[0] == MouseFunction.SCROLL_DOWN.name)):
+            self._tryUpdatePartnerData(widget)
+            self.undo_stack.beginMacro("Change")
+            try:
+                self.undo_stack.push(ChangeStepCommand(model=self.timeline_model,index=index,new_value=new_value))
+                self.undo_stack.push(RemoveStepCommand(model=self.timeline_model,index=timeline_data.partner_idx))
+            finally:
+                self.undo_stack.endMacro()
+        else:
+            self.undo_stack.push(ChangeStepCommand(model=self.timeline_model,index=index,new_value=new_value))
 
     def userMovesStep(self, new_index):
         selection = self.timeline_list.selectedItems()
@@ -237,11 +250,11 @@ class RecorderTab(QWidget):
             adjusted_target=adjusted_target
         ))
 
-    def userRecordsStep(self, insert_at, data: TimelineData):
+    def userRecordsStep(self, insert_at, data: TimelineStep):
         self.undo_stack.push(AddStepCommand(self.timeline_model, insert_at, data))
 
     # --- View Updates (React to Signals) ---
-    def onStepAdded(self, index, data: TimelineData):
+    def onStepAdded(self, index, data: TimelineStep):
         item = QListWidgetItem()
         item.setSizeHint(QSize(100, 48))
 

@@ -1,19 +1,20 @@
 import sys
 from typing import Hashable
 
-from macro_studio.core.controllers.task_controller import TaskController
 from macro_studio.core.types_and_enums import TaskFunc, LogLevel, CaptureMode
 from macro_studio.core.data import Profile
 from macro_studio.core.utils import global_logger
 from macro_studio.ui.main_window import MainWindow
+from macro_studio.core.controllers.task_manager import TaskManager
 from .macro_worker import MacroWorker
+
 
 class MacroStudio:
     def __init__(self, macro_name: str):
-        self._task_controllers: list[TaskController] = []
         self._profile = Profile(macro_name)
         self._closing = False
         self._worker = MacroWorker(self)
+        self._manager = TaskManager(self._worker, self._profile)
         self._profile_name = macro_name
 
         # Setup UI stuff
@@ -51,18 +52,15 @@ class MacroStudio:
         var_config = self._profile.vars.get(key)
         return var_config and var_config.value or None
 
-    def addRunTask(self, task_func: TaskFunc) -> TaskController:
+    def addRunTask(self, task_func: TaskFunc):
         """
         Add a task function to run when executing macros.
         Args:
             task_func: The function.
-
         Returns:
             The task controller handle.
         """
-        controller = TaskController(self._worker, task_func, len(self._task_controllers))
-        self._task_controllers.append(controller)
-        return controller
+        return self._manager.createController(task_func, False)
 
     def isRunningMacros(self):
         """
@@ -80,7 +78,7 @@ class MacroStudio:
 
         self._worker.pause_state.clear()
         self._worker.running = True
-        self._worker.reloadControllers(self._task_controllers)
+        self._worker.reloadControllers(self._manager.getEnabledControllers())
         self.ui.startMacroVisuals()
         global_logger.log("Starting Macro...")
         self._worker.start()
@@ -121,7 +119,8 @@ class MacroStudio:
         if still_running:
             self.ui.pauseMacroVisuals()
             if interrupt:
-                global_logger.log("Global Interrupt Active: Running tasks interrupted and cleaned up. (Current wait timers cancelled).")
+                global_logger.log(
+                    "Global Interrupt Active: Running tasks interrupted and cleaned up. (Current wait timers cancelled).")
             else:
                 global_logger.log("Global Pause Active")
         else:

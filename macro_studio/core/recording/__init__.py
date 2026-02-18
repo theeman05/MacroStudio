@@ -1,6 +1,6 @@
-from .timeline_handler import ActionType, TimelineData
+from .timeline_handler import ActionType, TimelineStep
 
 __all__ = [
-    'TimelineData',
+    'TimelineStep',
     'ActionType'
 ]

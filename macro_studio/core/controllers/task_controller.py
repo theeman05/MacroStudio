@@ -11,14 +11,17 @@ if TYPE_CHECKING:
     from macro_studio.core.execution.macro_worker import MacroWorker
 
 class TaskController:
-    def __init__(self, scheduler: "MacroWorker", task_func: TaskFunc, task_id: int):
+    def __init__(self, scheduler: "MacroWorker", task_func: TaskFunc, task_id: int, auto_loop=False, unique_name: str|int=None, is_enabled: bool=True):
         self.func = task_func
         self.pause_state = PauseState()
         self._wake_time = 0
+        self._is_enabled = is_enabled
+        self._auto_loop = auto_loop
 
         self._mutex = QMutex()
         self._scheduler = scheduler
         self._id = task_id
+        self._name = unique_name or task_id
         self._generator: Generator | None = None
         self._generation = 0
 
@@ -35,6 +38,23 @@ class TaskController:
     @property
     def cid(self):
         return self._id
+
+    def getName(self):
+        return self._name
+
+    def setEnabled(self, enabled: bool):
+        """
+        Enables the controller so it may run in the macro. If re-enabling, restarts the controller.
+        """
+        if self._is_enabled == enabled: return
+        self._is_enabled = enabled
+        if enabled:
+            self.restart()
+        else:
+            self.stop()
+
+    def isEnabled(self):
+        return self._is_enabled
 
     def pause(self, interrupt=False):
         """
@@ -242,11 +262,11 @@ class TaskController:
             args: The objects to be printed in the log. If mode is not ERROR, will cast the args automatically.
             level: The log level to display at.
         """
-        global_logger.log(*args, level=level, task_id=self._id)
+        global_logger.log(*args, level=level, task_name=self._name)
 
     def logError(self, error_msg, trace=""):
         """Sends a specialized LogErrorPacket object to the ui."""
-        global_logger.logError(error_msg, trace, self._id)
+        global_logger.logError(error_msg, trace, self._name)
 
     def getVar(self, key: Hashable):
         """
@@ -264,3 +284,28 @@ class TaskController:
     def __next__(self):
         with QMutexLocker(self._mutex):
             return next(self._generator)
+
+    # def executeUserScript(user_code_string):
+    #     instruction_count = 0
+    #     max_instructions = 10000
+    #
+    #     def traceExecution(frame, event, arg):
+    #         nonlocal instruction_count
+    #         if event == "line":
+    #             instruction_count += 1
+    #             if instruction_count > max_instructions:
+    #                 # 1. Kill the user's infinite loop instantly
+    #                 raise TimeoutError("Macro exceeded maximum allowed operations!")
+    #         return traceExecution
+    #
+    #     # 2. Attach the sniper
+    #     sys.settrace(traceExecution)
+    #
+    #     try:
+    #         # 3. Run their dangerously unyielding code
+    #         exec(user_code_string)
+    #     except TimeoutError as e:
+    #         print(f"Script Terminated: {e}")
+    #     finally:
+    #         # 4. Remove the sniper so your app runs normally again
+    #         sys.settrace(None)

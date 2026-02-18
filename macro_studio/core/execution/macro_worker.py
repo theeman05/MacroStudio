@@ -167,10 +167,10 @@ class MacroWorker(QThread):
                 except StopIteration:
                     # Controller stopped successfully
                     controller.stop()
-                    global_logger.log(f"Task {controller.cid} finished.")
+                    global_logger.log(f"Task {controller.getName()} finished.")
                 except Exception as e:
                     controller.stop()
-                    global_logger.logError(f"{str(e)}", task_id=controller.cid)
+                    global_logger.logError(f"{str(e)}", task_name=controller.getName())
             else:
                 self.msleep(delay_ms)
 
@@ -229,4 +229,4 @@ class MacroWorker(QThread):
 
     @staticmethod
     def logControllerAborted(controller: "TaskController"):
-        global_logger.log(f"Task {controller.cid} aborted via unhandled Hard Stop.", level=LogLevel.WARN)
+        global_logger.log(f"Task {controller.getName()} aborted via unhandled Hard Stop.", level=LogLevel.WARN)

@@ -26,13 +26,13 @@ class LogLevel(Enum):
 class LogPacket:
     parts: Tuple[object, ...]
     level: LogLevel = LogLevel.INFO
-    task_id: int = 0
+    task_name: int | str = 0
 
 @dataclass
 class LogErrorPacket:
     message: str
     traceback: str | None
-    task_id: int
+    task_name: int | str
 
 class TaskAbortException(BaseException):
     """Raised when the macro is stopped normally."""

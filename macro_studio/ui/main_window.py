@@ -242,10 +242,10 @@ class MainWindow(QMainWindow):
         if isinstance(payload, LogPacket):
             timestamp = datetime.now().strftime("%H:%M:%S")
             text = self._formatLogParts(payload)
-            task_id = f"Task {payload.task_id}" if payload.task_id != -1 else "SYSTEM"
+            task_id = f"Task {payload.task_name}" if payload.task_name != -1 else "SYSTEM"
 
             # Simple color mapping
-            color = "#00ff00" if payload.task_id == -1 else ""
+            color = "#00ff00" if payload.task_name == -1 else ""
             if payload.level is LogLevel.ERROR:
                 color = "red"
             elif payload.level is LogLevel.WARN:
@@ -254,7 +254,7 @@ class MainWindow(QMainWindow):
             self.console.append(f'[{timestamp}] <span style="color: {color};">[{task_id}] {text}</span>')
 
         elif isinstance(payload, LogErrorPacket):
-            message = f'<b style="color:darkred">CRITICAL ERROR in Task {payload.task_id}: {payload.message}</b> '
+            message = f'<b style="color:darkred">CRITICAL ERROR in Task {payload.task_name}: {payload.message}</b> '
             if payload.traceback:
                 trace_id = uuid.uuid4().hex
                 self.console.traceback_storage[trace_id] = payload.traceback

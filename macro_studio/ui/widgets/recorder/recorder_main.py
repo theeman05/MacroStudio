@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QDrag, QPainter, QColor, QPen, QBrush, QPalette
 from PySide6.QtCore import Qt, QMimeData, QSize
 
-from macro_studio.core.recording import ActionType, TimelineData
+from macro_studio.core.recording import ActionType, TimelineStep
 from macro_studio.ui.shared import DEFAULT_ICON_COLOR, SELECTED_COLOR, HoverButton
 
 if TYPE_CHECKING:
@@ -244,7 +244,7 @@ class DraggableListWidget(QListWidget):
         if widget:
             action_type = widget.action_type
             detail = 1 if ACTION_TYPES[action_type].pairable else None
-            self.recorder_tab.userAddsStep(None, TimelineData(action_type=action_type,detail=detail))
+            self.recorder_tab.userAddsStep(None, TimelineStep(action_type=action_type, detail=detail))
 
     def startDrag(self, supportedActions):
         item = self.currentItem()

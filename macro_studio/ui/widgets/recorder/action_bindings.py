@@ -96,19 +96,19 @@ class KeyCaptureEditor(SneakyWidget):
         super().startCapture()
 
     def keyPressEvent(self, event):
-        self.releaseKeyboard()
-
-        key = event.key()
-
-        # Ignore modifiers
-        if key in [Qt.Key.Key_Control, Qt.Key.Key_Shift, Qt.Key.Key_Alt, Qt.Key.Key_Meta]:
+        if not self.can_finish:
+            super().keyPressEvent(event)
             return
 
-        # Process Key
-        sequence = QKeySequence(event.keyCombination())
-        data_str = sequence.toString() # ctrl+c
+        self.releaseKeyboard()
+
+        # Convert that single key into its standard Qt string format
+        sequence = QKeySequence(event.key())
+        data_str = sequence.toString()
 
         self.editor.setText(data_str)
+        event.accept()
+
         self.finishEditing(data_str)
 
     def getDisplayStr(self):
