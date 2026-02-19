@@ -24,40 +24,37 @@ class TaskModel:
 
 class TaskStore(BaseStore):
     activeStepSet = Signal()
+    taskAdded = Signal(TaskModel)
+    taskRemoved = Signal(str) # (task name)
+    taskSaved = Signal(TaskModel)
+    taskLoopChanged = Signal(str, bool)
 
     def __init__(self):
         super().__init__("tasks")
         self.tasks: list[TaskModel] = []
         self._active_idx = -1
 
-    def createTask(self, name, set_as_active=False, serialized_steps=None):
+    def createTask(self, name_or_model: str | TaskModel, set_as_active=False):
         """Creates a new task and adds it to the end of the list. Assumes the name is unique."""
-        new_task = TaskModel(name=name, steps=serialized_steps)
-        self.tasks.append(new_task)  # Adds to end (Newest)
+        new_task = TaskModel(name=name_or_model) if isinstance(name_or_model, str) else name_or_model
+        self.tasks.append(new_task)
         idx = len(self.tasks) - 1
         if set_as_active:
             self.setActiveTask(idx)
 
-        return new_task
+        self.taskAdded.emit(new_task)
 
-    def saveStepsToActive(self, serialized_steps):
-        task = self.getActiveTask()
-        if task:
-            task.steps = serialized_steps
-        else:
-            task = TaskModel(name="New Task", steps=serialized_steps)
-            self.tasks.append(task)
-            self._active_idx = 0
-            # Silently set the task so we don't reload anything
+        return new_task
 
     def popTask(self, task_idx: int=None):
         if task_idx is None:
             task_idx = self._active_idx
 
         if task_idx < 0 or task_idx >= len(self.tasks):
-            return
+            return None
 
-        self.tasks.pop(task_idx)
+        task = self.tasks.pop(task_idx)
+        self.taskRemoved.emit(task.name)
 
         if not self.tasks: # Out of tasks
             self._active_idx = -1
@@ -69,11 +66,20 @@ class TaskStore(BaseStore):
             self._active_idx = -1
             self.setActiveTask(new_idx)
 
-    def removeTask(self, task_name: str):
-        task_idx = self.getTaskIdx(task_name)
-        if task_idx != -1: self.popTask(task_idx)
+        return task
 
-        return task_idx
+    def _silentCreateTask(self, task):
+        self._active_idx = 0  # Silently set the task so we don't reload anything
+        self.createTask(task)
+
+    def saveStepsToActive(self, serialized_steps):
+        task = self.getActiveTask()
+        if task:
+            task.steps = serialized_steps
+        else:
+            task = TaskModel(name="New Task", steps=serialized_steps)
+            self._silentCreateTask(task)
+        self.taskSaved.emit(task)
 
     def setActiveTask(self, task_idx: int):
         if task_idx < -1 or task_idx >= len(self.tasks):
@@ -83,8 +89,28 @@ class TaskStore(BaseStore):
             self._active_idx = task_idx
             self.activeStepSet.emit()
 
+    def setActiveLoopStatus(self, auto_loop: bool):
+        task = self.getActiveTask()
+        if task:
+            if task.auto_loop != auto_loop:
+                task.auto_loop = auto_loop
+                self.taskLoopChanged.emit(task.name, auto_loop)
+        else:
+            self._silentCreateTask(TaskModel("New Task", auto_loop=auto_loop))
+
+    def duplicate_task(self, task_name: str=None):
+        set_as_active = task_name is None
+        ref_task_idx = self.getTaskIdx(task_name) if task_name is not None else self._active_idx
+        if ref_task_idx == -1: return None
+        ref_task = self.tasks[ref_task_idx]
+        new_name = self.generateUniqueName(task_name)
+        return self.createTask(TaskModel(new_name, steps=ref_task.steps, auto_loop=ref_task.auto_loop), set_as_active=set_as_active)
+
     def getActiveTask(self):
         return self.tasks[self._active_idx] if self.tasks else None
+
+    def getActiveTaskIdx(self):
+        return self._active_idx
 
     def getTaskIdx(self, task_name: str):
         for i, task in enumerate(self.tasks):
@@ -165,3 +191,9 @@ class TaskStore(BaseStore):
             self.tasks.append(task_model)
 
         if self.tasks: self.setActiveTask(0)
+
+    def __iter__(self):
+        return iter(self.tasks)
+
+    def __len__(self):
+        return len(self.tasks)

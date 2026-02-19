@@ -6,21 +6,27 @@ from typing import TYPE_CHECKING, Generator, Hashable
 from macro_studio.core.execution.pause_state import PauseState
 from macro_studio.core.types_and_enums import TaskFunc, TaskAbortException, TaskInterruptedException, LogLevel
 from macro_studio.core.utils import global_logger
+from macro_studio.core.api.task_context import TaskContext
 
 if TYPE_CHECKING:
-    from macro_studio.core.execution.macro_worker import MacroWorker
+    from macro_studio.core.execution.task_worker import TaskWorker
+
 
 class TaskController:
-    def __init__(self, scheduler: "MacroWorker", task_func: TaskFunc, task_id: int):
+    def __init__(self, scheduler: "TaskWorker", task_func: TaskFunc, task_id: int, auto_loop=False, unique_name: str | int=None, is_enabled=True):
         self.func = task_func
         self.pause_state = PauseState()
         self._wake_time = 0
+        self._is_enabled = is_enabled
+        self.auto_loop = auto_loop
 
         self._mutex = QMutex()
         self._scheduler = scheduler
         self._id = task_id
+        self._name = unique_name or task_id
         self._generator: Generator | None = None
         self._generation = 0
+        self._context = TaskContext(self)
 
     @property
     def wake_time(self):
@@ -35,6 +41,23 @@ class TaskController:
     @property
     def cid(self):
         return self._id
+
+    def getName(self):
+        return self._name
+
+    def setEnabled(self, enabled: bool):
+        """
+        Enables the controller so it may run in the macro. If re-enabling, restarts the controller.
+        """
+        if self._is_enabled == enabled: return
+        self._is_enabled = enabled
+        if enabled:
+            self.restart()
+        else:
+            self.stop()
+
+    def isEnabled(self):
+        return self._is_enabled
 
     def pause(self, interrupt=False):
         """
@@ -60,7 +83,7 @@ class TaskController:
         """
         Safely attempts to throw a ``TaskInterruptedException`` onto the current generator.
         Returns:
-            ``True`` if the task is now hard paused, ``False`` if it was stopped abruptly.
+            ``True`` if the task is now hard paused or autoloop enabled, ``False`` otherwise.
         """
         with QMutexLocker(self._mutex):
             if not self._generator: return False
@@ -68,10 +91,13 @@ class TaskController:
                 self._generator.throw(TaskInterruptedException)
             except (StopIteration, TaskInterruptedException):
                 # If there's nothing left in our generator, the task has been stopped; cleanup
-                self._generator = None
+                # Create new generator if autoloop is enabled
+                # TODO: Set special state here
+                self._generator = self._tryWrapFunc() if self.auto_loop else None
                 self.pause_state.clear()
                 self._generation += 1
-                return False
+
+                return self._generator is not None
 
         return True
 
@@ -93,7 +119,7 @@ class TaskController:
             with QMutexLocker(self._mutex):
                 self._generation += 1
                 self._wake_time = 0 if was_hard_pause else (self._wake_time + elapsed)
-                self._scheduler.moveToActiveAndReschedule(self, *self._unsafeGetSortKey())
+                self._scheduler.moveToActiveAndReschedule(self, self._unsafeGetSortKey())
 
         return elapsed
 
@@ -113,28 +139,38 @@ class TaskController:
             func(**kwargs)
             yield
 
-    def resetGeneratorAndGetSorKey(self, create_new: bool=True):
+    def resetGeneratorAndGetSortKey(self, create_new: bool = True, wake_time: float = None):
         """
-        Creates a new generator (if create_new is ``True``) and destroys the old one, also resets pause state.
+        Creates a new generator and destroys the old one.
         Returns:
             The sort key
         """
         self.pause_state.clear()
         with QMutexLocker(self._mutex):
             self._generation += 1
-            self._wake_time = 0
+            self._wake_time = wake_time or 0
             prev_gen = self._generator
             self._generator = self._tryWrapFunc() if create_new else None
-            if prev_gen: prev_gen.close()
+
+            # Close the old generator to trigger its 'finally' cleanup blocks
+            if prev_gen:
+                prev_gen.close()
+
             return self._unsafeGetSortKey()
 
     def stop(self):
-        """Stops a task on its next cycle. """
-        self.resetGeneratorAndGetSorKey(False)
+        """
+        Attempts to stop a task on its next cycle.
+        """
+        self.resetGeneratorAndGetSortKey(False)
 
-    def restart(self):
-        """Kills the current instance of the task and starts a fresh one at the next work cycle."""
-        self._scheduler.moveToActiveAndReschedule(self, *self.resetGeneratorAndGetSorKey())
+    def restart(self, wake_time: float=None):
+        """
+        Kills the current instance of the task and starts a fresh one at the next work cycle.
+        Args:
+            wake_time: The wake time for the task to run at after restarting.
+        """
+        self._scheduler.moveToActiveAndReschedule(self, self.resetGeneratorAndGetSortKey(wake_time=wake_time))
 
     def isPaused(self):
         return self.pause_state.active
@@ -242,11 +278,11 @@ class TaskController:
             args: The objects to be printed in the log. If mode is not ERROR, will cast the args automatically.
             level: The log level to display at.
         """
-        global_logger.log(*args, level=level, task_id=self._id)
+        global_logger.log(*args, level=level, task_name=self._name)
 
     def logError(self, error_msg, trace=""):
         """Sends a specialized LogErrorPacket object to the ui."""
-        global_logger.logError(error_msg, trace, self._id)
+        global_logger.logError(error_msg, trace, self._name)
 
     def getVar(self, key: Hashable):
         """
@@ -257,6 +293,26 @@ class TaskController:
             The value for a setup variable if present or None.
         """
         return self._scheduler.engine.getVar(key)
+
+    def setScheduler(self, scheduler: "TaskWorker"):
+        """
+        Sets the scheduler and destroys the generator forcefully if it exists.
+        Args:
+            scheduler: The new scheduler to assign to this controller.
+        """
+        assert scheduler is not None
+        self._scheduler = scheduler
+        self._mutex = QMutex()
+        prev_gen = self._generator
+        if prev_gen:
+            self._generator = None
+            try:
+                prev_gen.close()
+            except ValueError:
+                global_logger.log(f"Task '{self.getName()}' caused a thread deadlock. Execution aborted without safe cleanup.", level=LogLevel.ERROR, task_name=-1)
+            del prev_gen
+        self._generation = -1
+        self.resetGeneratorAndGetSortKey(False)
 
     def __iter__(self):
         return self

@@ -1,19 +1,18 @@
 import sys
 from typing import Hashable
 
-from macro_studio.core.controllers.task_controller import TaskController
 from macro_studio.core.types_and_enums import TaskFunc, LogLevel, CaptureMode
 from macro_studio.core.data import Profile
 from macro_studio.core.utils import global_logger
 from macro_studio.ui.main_window import MainWindow
-from .macro_worker import MacroWorker
+from macro_studio.core.controllers.task_manager import TaskManager
+
 
 class MacroStudio:
     def __init__(self, macro_name: str):
-        self._task_controllers: list[TaskController] = []
         self._profile = Profile(macro_name)
         self._closing = False
-        self._worker = MacroWorker(self)
+        self._manager = TaskManager(self, self._profile)
         self._profile_name = macro_name
 
         # Setup UI stuff
@@ -25,7 +24,7 @@ class MacroStudio:
         self.ui.start_signal.connect(self.startMacroExecution)
         self.ui.pause_signal.connect(self.pauseMacroExecution)
         self.ui.stop_signal.connect(self._handleStopSignal)
-        self._worker.finished_signal.connect(lambda: self.cancelMacroExecution(True))
+        self._manager.finished_signal.connect(lambda: self.cancelMacroExecution(True))
 
     def addVar(self, key: Hashable, data_type: CaptureMode | type, default_val: object=None, pick_hint: str=None):
         """
@@ -51,39 +50,50 @@ class MacroStudio:
         var_config = self._profile.vars.get(key)
         return var_config and var_config.value or None
 
-    def addRunTask(self, task_func: TaskFunc) -> TaskController:
+    def addRunTask(self, task_func: TaskFunc, auto_loop=False):
         """
         Add a task function to run when executing macros.
         Args:
             task_func: The function.
-
+            auto_loop: If the controller should restart itself upon finishing.
         Returns:
             The task controller handle.
         """
-        controller = TaskController(self._worker, task_func, len(self._task_controllers))
-        self._task_controllers.append(controller)
-        return controller
+        return self._manager.createController(task_func, auto_loop)
 
     def isRunningMacros(self):
         """
         Returns:
             True if the app is running any macros, false otherwise.
         """
-        return self._worker.running
+        return self._manager.worker.running
 
     def startMacroExecution(self):
         """Begins macro execution. If the engine is paused, resumes execution."""
-        if self._worker.running:
+        if self.isRunningMacros():
             if self.isPaused():
                 self.resumeMacroExecution()
             return
 
-        self._worker.pause_state.clear()
-        self._worker.running = True
-        self._worker.reloadControllers(self._task_controllers)
         self.ui.startMacroVisuals()
-        global_logger.log("Starting Macro...")
-        self._worker.start()
+        self._manager.startWorker()
+
+    @property
+    def loop_delay(self):
+        """
+        Returns:
+            The loop delay (in seconds) for auto looping tasks.
+        """
+        return self._manager.loop_delay
+
+    @loop_delay.setter
+    def loop_delay(self, delay: float):
+        """
+        Sets the loop delay for auto looping tasks.
+        Args:
+            delay: The delay in seconds.
+        """
+        self._manager.loop_delay = delay
 
     def _handleStopSignal(self, killed: bool):
         self.cancelMacroExecution()
@@ -92,10 +102,14 @@ class MacroStudio:
 
     def cancelMacroExecution(self, completed=False):
         """Cancel currently executing macros."""
-        if not self.isRunningMacros(): return
-        global_logger.log("Globally Cancelled Execution" if not completed else "Macro Finished. All tasks completed.")
-        self._worker.stop()
-        self.ui.stopMacroVisuals()
+        if not self.isRunningMacros():
+            self.ui.stopMacroVisuals()
+            return
+        self.ui.startMacroVisuals()
+        success = self._manager.stopWorker()
+        if success:
+            global_logger.log("Globally Cancelled Execution" if not completed else "Macro Finished. All tasks completed.")
+            self.ui.stopMacroVisuals()
 
     def pauseMacroExecution(self, interrupt: bool=True):
         """
@@ -110,26 +124,31 @@ class MacroStudio:
                 * ``False``: **Freeze.** Suspends the generator execution at the exact current line.
                   No cleanup logic is triggered; held keys remain held and local variables are preserved exactly as-is.
         Returns:
-            ``True`` if the pause command was issued successfully; ``False`` if the engine was already stopped.
+            ``True`` if the pause command was issued successfully; ``False`` if the engine could not be stopped.
         """
-        if not self._worker.running:
+        if not self.isRunningMacros():
             global_logger.log("Cannot pause: Worker is already stopped.", level=LogLevel.WARN)
             self.ui.stopMacroVisuals()
             return False
 
-        still_running = self._worker.pause(interrupt)
-        if still_running:
-            self.ui.pauseMacroVisuals()
-            if interrupt:
-                global_logger.log("Global Interrupt Active: Running tasks interrupted and cleaned up. (Current wait timers cancelled).")
+        self.ui.startMacroVisuals()
+        success = self._manager.pauseWorker(interrupt)
+        if success:
+            if self.isRunningMacros():
+                self.ui.pauseMacroVisuals()
+                if interrupt:
+                    global_logger.log(
+                        "Global Interrupt Active: Running tasks interrupted and cleaned up. (Current wait timers cancelled).")
+                else:
+                    global_logger.log("Global Pause Active")
             else:
-                global_logger.log("Global Pause Active")
-        else:
-            self.ui.stopMacroVisuals()
-        return still_running
+                # Interrupt killed running tasks
+                self.ui.stopMacroVisuals()
+
+        return success
 
     def isPaused(self):
-        return self._worker.isPaused()
+        return self._manager.worker.isPaused()
 
     def resumeMacroExecution(self):
         """
@@ -137,9 +156,9 @@ class MacroStudio:
         Returns:
             The duration paused for in seconds or ``None`` if not paused.
         """
-        elapsed = self._worker.resume() if self.isRunningMacros() else None
+        elapsed = self._manager.resumeWorker()
         if elapsed is not None:
-            global_logger.log(f"Resumed Execution After {elapsed} Seconds.")
+            global_logger.log(f"Resumed Execution After {elapsed:.2f} Seconds.")
             self.ui.resumeMacroVisuals()
 
         return elapsed

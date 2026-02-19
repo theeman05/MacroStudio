@@ -222,12 +222,9 @@ class TaskSelectorPopup(QDialog):
         self.refreshView()
 
     def duplicateTask(self, task_name):
-        ref_task = self.tasks.getTaskIdx(task_name)
-        if ref_task == -1: return
-        new_name = self.tasks.generateUniqueName(task_name)
-        self.tasks.createTask(new_name, serialized_steps=self.tasks.tasks[ref_task].steps)
-        self.addTaskWidget(new_name)
-        self.refreshView()
+        if duped_task := self.tasks.duplicate_task(task_name):
+            self.addTaskWidget(duped_task.name)
+            self.refreshView()
 
     def renameTask(self, old_name, new_name):
         """
@@ -262,14 +259,11 @@ class TaskSelectorPopup(QDialog):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
-            active_task = self.tasks.getActiveTask()
-            remove_idx = self.tasks.removeTask(task_name)
-
-            if remove_idx != -1:
-                # Remove from UI
-                self.scroll_layout.removeWidget(self.rows_list.pop(remove_idx))
-
-                if active_task.name == task_name:
+            active_idx = self.tasks.getActiveTaskIdx()
+            popped_task = self.tasks.popTask(active_idx)
+            if popped_task:
+                self.scroll_layout.removeWidget(self.rows_list.pop(active_idx))
+                if active_idx.name == task_name:
                     self.parent_header.updateTaskDisplay()
 
     def refreshView(self):
@@ -382,13 +376,7 @@ class TaskHeaderWidget(QWidget):
         return super().eventFilter(source, event)
 
     def toggleAutoLoop(self, checked: bool):
-        active_task = self.tasks.getActiveTask()
-        if active_task:
-            prev_state = active_task.auto_loop
-            if prev_state != checked:
-                active_task.auto_loop = checked
-        elif checked:
-            self.tasks.createTask("New Task").auto_loop = True
+        self.tasks.setActiveLoopStatus(checked)
 
     def setModified(self, modified: bool):
         self.has_changes = modified
@@ -585,9 +573,7 @@ class TaskHeaderWidget(QWidget):
         if not self.confirmDiscardChanges():
             return
 
-        if active_task := self.tasks.getActiveTask():
-            new_name = self.tasks.generateUniqueName(active_task.name)
-            self.tasks.createTask(new_name, set_as_active=True, serialized_steps=active_task.steps)
+        if self.tasks.duplicate_task():
             self.updateTaskDisplay()
 
     def onDelete(self):

@@ -1,9 +1,8 @@
 import bisect
 from dataclasses import dataclass
 from enum import Enum
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, QPoint
 from PySide6.QtGui import QUndoCommand
-from pynput.mouse import Button
 
 from macro_studio.core.controllers.type_handler import GlobalTypeHandler
 
@@ -20,25 +19,20 @@ class MouseFunction(str, Enum):
     SCROLL_CLICK = "Scroll Click"
     SCROLL_UP = "Scroll Up"
     SCROLL_DOWN = "Scroll Down"
-    SCROLL_LEFT = "Scroll Left"
-    SCROLL_RIGHT = "Scroll Right"
-    MOUSE_4 = "Mouse Button 4"
-    MOUSE_5 = "Mouse Button 5"
 
-MOUSE_ACTION_MAP = {
-    MouseFunction.LEFT_CLICK: Button.left,
-    MouseFunction.RIGHT_CLICK: Button.right,
-    MouseFunction.SCROLL_CLICK: Button.middle,
-    MouseFunction.MOUSE_4: Button.x1, # Often the "Back" thumb button
-    MouseFunction.MOUSE_5: Button.x2, # Often the "Forward" thumb button
+M_FUNCTION_TO_PYDIRECTINPUT = {
+    MouseFunction.LEFT_CLICK.name: "left",
+    MouseFunction.RIGHT_CLICK.name: "right",
+    MouseFunction.SCROLL_CLICK.name: "middle",  # pydirectinput calls the wheel 'middle'
+
+    MouseFunction.SCROLL_UP.name: 1,  # Positive integers scroll up
+    MouseFunction.SCROLL_DOWN.name: -1,  # Negative integers scroll down
 }
 
-BUTTON_TO_FUNCTION_MAP = {v: k for k, v in MOUSE_ACTION_MAP.items()}
-
 @dataclass
-class TimelineData:
+class TimelineStep:
     action_type: ActionType
-    value: object=None
+    value: object = None
     detail: int=None # 1 means press, 2 means release
     partner_idx: int | None=None
 
@@ -56,6 +50,28 @@ class TimelineData:
             return self.value[0], GlobalTypeHandler.toString(self.value[1])
         return self.value
 
+    @staticmethod
+    def fromDict(step_data):
+        step = TimelineStep(**step_data)
+        step.action_type = ActionType[step_data['action_type']]
+        if step.action_type == ActionType.MOUSE:
+            m_btn = m_pos = None
+            if step.value is not None:
+                m_btn, m_pos = step.value
+
+            m_btn = m_btn or MouseFunction.LEFT_CLICK.name
+
+            if m_pos and isinstance(m_pos, str): # Try to convert second back to QPoint
+                try:
+                    m_pos = GlobalTypeHandler.fromString(QPoint, m_pos)
+                except (ValueError, TypeError):
+                    pass
+
+            step.value = (m_btn, m_pos)
+
+        return step
+
+
 class TimelineModel(QObject):
     stepAdded = Signal(int, object) # (index, value)
     stepMoved = Signal(int, int) # (old_index, new_index)
@@ -64,7 +80,7 @@ class TimelineModel(QObject):
 
     def __init__(self):
         super().__init__()
-        self._steps: list[TimelineData] = []
+        self._steps: list[TimelineStep] = []
 
     def insertStep(self, index: int, data):
         """Inserts value and notifies listeners."""
@@ -112,8 +128,7 @@ class TimelineModel(QObject):
         new_steps = []
         self._steps = new_steps
         for i, step_data in enumerate(steps):
-            step = TimelineData(**step_data)
-            step.action_type = ActionType[step_data['action_type']]
+            step = TimelineStep.fromDict(step_data)
             new_steps.append(step)
             self.stepAdded.emit(i, step)
 
@@ -127,7 +142,7 @@ class TimelineModel(QObject):
 # THE COMMANDS (Undo/Redo Logic)
 # -----------------------------------------------------------------------------
 class AddStepCommand(QUndoCommand):
-    def __init__(self, model: TimelineModel, index, data: TimelineData):
+    def __init__(self, model: TimelineModel, index, data: TimelineStep):
         super().__init__(f"Add {data.action_type.value.title()}")
         self.model = model
         self.index = index

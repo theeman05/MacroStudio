@@ -1,22 +1,19 @@
 import time
 from PySide6.QtCore import Signal, QObject, QPoint, QMutex, QMutexLocker
 from pynput import mouse, keyboard
-from pynput.keyboard import Key
+from pynput.mouse import Button
 
-from .timeline_handler import TimelineData, ActionType, MouseFunction, BUTTON_TO_FUNCTION_MAP
+from .timeline_handler import TimelineStep, ActionType, MouseFunction
+from .input_translator import DirectInputTranslator
 
-
-def _formatKey(key):
-    if isinstance(key, Key):
-        return key.name
-    elif hasattr(key, 'char') and key.char:
-        return key.char
-    else:
-        return str(key)
-
+_BUTTON_TO_FUNCTION_MAP = {
+    Button.left: MouseFunction.LEFT_CLICK.name,
+    Button.right: MouseFunction.RIGHT_CLICK.name,
+    Button.middle: MouseFunction.SCROLL_CLICK.name,
+}
 
 class InputRecorder(QObject):
-    stepAdded = Signal(int, object)  # (index, TimelineData)
+    stepAdded = Signal(int, object)  # (index, TimelineStep)
 
     def __init__(self, /):
         super().__init__()
@@ -29,7 +26,7 @@ class InputRecorder(QObject):
         self._keyboard_listener = None
         self._pending_release = {}
         self._step_idx = 0
-        self._ignore_keys = {"f8"}
+        self._ignore_keys = {"F8"}
 
     def start(self, start_step_ct):
         """Starts the recording listeners."""
@@ -66,7 +63,7 @@ class InputRecorder(QObject):
             self._step_idx = idx + 1
             return idx
 
-    def _addPendingRelease(self, button, data: TimelineData):
+    def _addPendingRelease(self, button, data: TimelineStep):
         with QMutexLocker(self._mutex):
             idx = self._step_idx
             self._step_idx += 1
@@ -74,7 +71,7 @@ class InputRecorder(QObject):
 
         self.stepAdded.emit(idx, data)
 
-    def _tryBindRelease(self, button, data: TimelineData):
+    def _tryBindRelease(self, button, data: TimelineStep):
         p_data = p_idx = None
         with QMutexLocker(self._mutex):
             t_idx = self._step_idx
@@ -100,7 +97,7 @@ class InputRecorder(QObject):
 
         if delay > 0.01:
             idx = self._incAndGetTaskIdx()
-            self.stepAdded.emit(idx, TimelineData(
+            self.stepAdded.emit(idx, TimelineStep(
                 action_type=ActionType.DELAY,
                 value=round(delay, 3)
             ))
@@ -112,67 +109,71 @@ class InputRecorder(QObject):
         if time.time() - self._start_time < 0.2:
             return
 
+        mouse_btn = _BUTTON_TO_FUNCTION_MAP.get(button)
+        if not mouse_btn: return
+
         if not pressed:
+            # If we're releasing, ensure it was pressed before, or void it
             with QMutexLocker(self._mutex):
-                if button not in self._pending_release:
+                if mouse_btn not in self._pending_release:
                     return
 
         self._recordDelay()
-        mouse_fun = BUTTON_TO_FUNCTION_MAP.get(button)
-        if not mouse_fun: return
-
-        value = (mouse_fun.name, QPoint(int(x), int(y)))
+        value = (mouse_btn, QPoint(int(x), int(y)))
 
         if pressed:
-            self._addPendingRelease(button, TimelineData(
+            self._addPendingRelease(mouse_btn, TimelineStep(
                 action_type=ActionType.MOUSE, value=value, detail=1
             ))
         else:
-            self._tryBindRelease(button, TimelineData(
+            self._tryBindRelease(mouse_btn, TimelineStep(
                 action_type=ActionType.MOUSE, value=value, detail=2
             ))
 
-    def _onScroll(self, x, y, dx, dy):
+    def _onScroll(self, x, y, _, dy):
         if not self.is_recording: return
-
-        self._recordDelay()
 
         if dy > 0: func_enum = MouseFunction.SCROLL_UP
         elif dy < 0: func_enum = MouseFunction.SCROLL_DOWN
-        elif dx > 0: func_enum = MouseFunction.SCROLL_RIGHT
-        elif dx < 0: func_enum = MouseFunction.SCROLL_LEFT
         else: return
+
+        self._recordDelay()
 
         value = (func_enum.name, QPoint(int(x), int(y)))
         idx = self._incAndGetTaskIdx()
-        self.stepAdded.emit(idx, TimelineData(
+        self.stepAdded.emit(idx, TimelineStep(
             action_type=ActionType.MOUSE, value=value
         ))
 
     def _onPress(self, key):
         if not self.is_recording: return
 
-        formatted_key = _formatKey(key)
-        if formatted_key in self._ignore_keys:
+        formatted_key = DirectInputTranslator.translateKey(key)
+        if not formatted_key or formatted_key in self._ignore_keys:
             return
 
+        # Don't allow double presses of the same key
+        with QMutexLocker(self._mutex):
+            if formatted_key in self._pending_release:
+                return
+
         self._recordDelay()
-        self._addPendingRelease(key, TimelineData(
+        self._addPendingRelease(formatted_key, TimelineStep(
             action_type=ActionType.KEYBOARD, value=formatted_key, detail=1
         ))
 
     def _onRelease(self, key):
         if not self.is_recording: return
 
-        formatted_key = _formatKey(key)
-        if formatted_key in self._ignore_keys:
+        formatted_key = DirectInputTranslator.translateKey(key)
+        if not formatted_key or formatted_key in self._ignore_keys:
             return
 
         with QMutexLocker(self._mutex):
-            if key not in self._pending_release:
+            if formatted_key not in self._pending_release:
                 return
 
         self._recordDelay()
-        self._tryBindRelease(key, TimelineData(
+        self._tryBindRelease(formatted_key, TimelineStep(
             action_type=ActionType.KEYBOARD, value=formatted_key, detail=2
         ))

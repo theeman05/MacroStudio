@@ -10,3 +10,4 @@
 /httpRequests/
 # JetBrains project configuration folder
 .idea/
+/data/
