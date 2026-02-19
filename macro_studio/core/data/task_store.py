@@ -110,7 +110,7 @@ class TaskStore(BaseStore):
         return self.tasks[self._active_idx] if self.tasks else None
 
     def getActiveTaskIdx(self):
-        return self.tasks[self._active_idx]
+        return self._active_idx
 
     def getTaskIdx(self, task_name: str):
         for i, task in enumerate(self.tasks):

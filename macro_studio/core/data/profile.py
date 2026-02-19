@@ -27,13 +27,13 @@ class Profile:
         self.has_saved = True
         master_data = {}
 
-        start_len = len(master_data)
         for store in self._registered_stores:
             GlobalTypeHandler.setIfEvals(store.store_name, store.serialize(), master_data)
 
-        # Save if we have data
-        if start_len != len(master_data):
+        if master_data:
             FileIO.exportData(master_data, self.getFilepath())
+        else:
+            FileIO.deleteFile(self.getFilepath())
 
     def load(self):
         self.has_saved = False

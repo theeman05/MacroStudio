@@ -24,14 +24,16 @@ def _handleTasksOnHard(controller: "TaskController", notified_tasks: set):
         return was_in_notified or controller.throwInterruptedError()
     return False
 
-class MacroWorker(QThread):
+class TaskWorker(QThread):
     finished_signal = Signal()
 
-    def __init__(self, engine: "MacroStudio"):
+    def __init__(self, engine: "MacroStudio", loop_delay: float):
         super().__init__()
         self.pause_state = PauseState()
         self.running = False
         self.engine = engine
+        self.loop_delay = loop_delay
+        self.last_heartbeat = 0
 
         self._mutex = QMutex()
         self._task_heap = []
@@ -56,21 +58,21 @@ class MacroWorker(QThread):
             if controllers:
                 # We don't use controller.restart here because that attempts to capture work mutex again.
                 for controller in controllers:
-                    self._unsafePushController(controller, *controller.resetGeneratorAndGetSorKey())
+                    self._unsafePushController(controller, *controller.resetGeneratorAndGetSortKey())
             else:
                 # Cleanup previous tasks that were going to run because we're stopping
                 for entry in prev_heap:
                     entry[3].stop()
 
-    def moveToActiveAndReschedule(self, controller: "TaskController", wake_time, cid, generation):
+    def moveToActiveAndReschedule(self, controller: "TaskController", sort_key):
         """Wakes a controller up and puts it back in the schedule."""
         with QMutexLocker(self._mutex):
             if controller in self._paused_tasks:
                 self._paused_tasks.remove(controller)
 
             # Schedule only if we're not paused
-            if not self.pause_state.active:
-                self._unsafePushController(controller, wake_time=wake_time, cid=cid, generation=generation)
+            if not self.pause_state.active and sort_key:
+                self._unsafePushController(controller, *sort_key)
 
     def _unsafeMoveToPaused(self, controller: "TaskController"):
         """Moves the controller to paused task list if it's not already there. Assumes we're locked already."""
@@ -84,12 +86,12 @@ class MacroWorker(QThread):
             # tasks that were going to run, or aren't hard paused already.
             notified_tasks = set()
             forcefully_stopped = set()
+            stopped_all = False
             with QMutexLocker(self._mutex):
                 # Snapshot the collections to protect if a task removes itself from the list/set during the 'throw'
                 active_snapshot = list(self._task_heap)
                 paused_snapshot = list(self._paused_tasks)
                 self._task_heap.clear() # Clear task heap because hard pause means things resume at their next cycle
-
                 # Controllers in the active snapshot should be added to paused and handled
                 for entry in active_snapshot:
                     controller = entry[3]
@@ -99,12 +101,11 @@ class MacroWorker(QThread):
                     else:
                         forcefully_stopped.add(controller)
 
+                # All tasks must have been stopped when hard stopping
                 if not self._paused_tasks:
-                    # All tasks must have been stopped when hard stopping, reset state
-                    self.running = False
-                    self.pause_state.clear()
+                    stopped_all = True
 
-            if self.running:
+            if not stopped_all:
                 # Handle previously paused tasks
                 for controller in paused_snapshot:
                     _handleTasksOnHard(controller, notified_tasks)
@@ -113,12 +114,15 @@ class MacroWorker(QThread):
                 for controller in forcefully_stopped:
                     self.logControllerAborted(controller)
             else:
+                self.running = False
+                self.pause_state.clear()
                 global_logger.log("System terminated all active tasks during interrupting pause.", level=LogLevel.WARN)
-
 
     def run(self):
         completed = False
         while self.running and not self.isPaused():
+            self.last_heartbeat = time.perf_counter()
+
             should_sleep = True
             delay_ms = 10
 
@@ -165,9 +169,13 @@ class MacroWorker(QThread):
                     with QMutexLocker(self._mutex):
                         self._unsafePushController(controller, wake_time=new_wake_time, cid=cid, generation=generation)
                 except StopIteration:
-                    # Controller stopped successfully
-                    controller.stop()
-                    global_logger.log(f"Task {controller.getName()} finished.")
+                    # Controller completed all steps
+                    if controller.auto_loop:
+                        # Throttle controller by adding slight delay before restarting
+                        controller.restart(time.perf_counter() + self.loop_delay)
+                    else:
+                        controller.stop()
+                        global_logger.log(f'Task "{controller.getName()}" finished.')
                 except Exception as e:
                     controller.stop()
                     global_logger.logError(f"{str(e)}", task_name=controller.getName())
@@ -202,30 +210,6 @@ class MacroWorker(QThread):
 
     def isPaused(self):
         return self.pause_state.active
-
-    def pause(self, interrupt: bool):
-        """
-        Pauses all task execution.
-        Args:
-            interrupt: Controls how the pause is handled.
-
-                * ``True``: Interrupts the task to **release keys** and **clean up resources** safely.
-                * ``False``: **Freezes** the task in place (keys remain held down).
-         Returns:
-             ``True`` if paused successfully, ``False`` if the engine has stopped abruptly.
-        """
-        if self.running and not self.isPaused():
-            self.pause_state.trigger(interrupt)
-            # Wait for loop to exit
-            self.wait()
-            return self.running
-        return True
-
-    def stop(self):
-        self.running = False
-        self.pause_state.clear()
-        self.wait()
-        self.reloadControllers(None)
 
     @staticmethod
     def logControllerAborted(controller: "TaskController"):

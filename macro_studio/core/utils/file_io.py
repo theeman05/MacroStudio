@@ -1,4 +1,5 @@
 import json
+import os
 from .logger import global_logger
 
 class FileIO:
@@ -28,3 +29,17 @@ class FileIO:
         except Exception as e:
             global_logger.logError(f"FileIO Export Error ({filepath}): {e}")
             return None
+
+    @staticmethod
+    def deleteFile(filepath: str) -> bool:
+        """
+        Deletes a file from disk.
+        Returns True if successful, False otherwise.
+        """
+        try:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            return True
+        except Exception as e:
+            global_logger.logError(f"FileIO Delete Error ({filepath}): {e}")
+            return False

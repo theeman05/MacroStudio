@@ -10,7 +10,7 @@ pydirectinput.PAUSE = 0.0
 
 def taskSleep(duration: float=.01):
     """
-    Non-blocking, yields control back to the scheduler for 'duration' seconds.
+    Non-blocking, yields control back to the worker for 'duration' seconds.
 
     Usage in task: yield from **macroSleep(2.0)**.
     Raises:
@@ -113,7 +113,7 @@ def taskAwaitThread(fun_in_thread, *args, **kwargs):
             if thread_exception:
                 raise thread_exception[0]  # Re-raise in the main engine!
             try:
-                # Short sleep to yield control back to the engine scheduler
+                # Short sleep to yield control back to the engine worker
                 yield from taskSleep(0.05)
             except TaskInterruptedException:
                 # The Engine is Hard Paused.

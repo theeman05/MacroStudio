@@ -122,7 +122,7 @@ class MainWindow(QMainWindow):
         self.btn_stop.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_stop.setMinimumHeight(36)
         self.btn_stop.setMinimumWidth(120)
-        self.btn_stop.clicked.connect(self.stopMacroVisuals)
+        self.btn_stop.clicked.connect(self.onStopClicked)
         layout.addWidget(self.btn_stop)
 
         # --- SPACER (Pushes Overlay to the right) ---
@@ -180,6 +180,10 @@ class MainWindow(QMainWindow):
             self.resumeMacroVisuals()
             self.start_signal.emit()
 
+    def onStopClicked(self):
+        self.stopMacroVisuals()
+        self.stop_signal.emit(False)
+
     def startMacroVisuals(self):
         self.running = True
         self.paused = False
@@ -200,7 +204,6 @@ class MainWindow(QMainWindow):
         self.paused = False
         self._updateStateVisuals("START (F6)", "IDLE", 100)
         self.progress.setValue(0)
-        self.stop_signal.emit(False)
         self.recorder_tab.setEnabled(True)
 
     def _updateStateVisuals(self, btn_text: str, status_text: str, progress: int):
@@ -239,8 +242,9 @@ class MainWindow(QMainWindow):
 
     # --- LOGGING (Thread Safe) ---
     def log(self, payload):
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        message = payload
         if isinstance(payload, LogPacket):
-            timestamp = datetime.now().strftime("%H:%M:%S")
             text = self._formatLogParts(payload)
             task_id = f"Task {payload.task_name}" if payload.task_name != -1 else "SYSTEM"
 
@@ -251,18 +255,19 @@ class MainWindow(QMainWindow):
             elif payload.level is LogLevel.WARN:
                 color = "orange"
 
-            self.console.append(f'[{timestamp}] <span style="color: {color};">[{task_id}] {text}</span>')
-
+            message = f'<span style="color: {color};">[{task_id}] {text}</span>'
         elif isinstance(payload, LogErrorPacket):
-            message = f'<b style="color:darkred">CRITICAL ERROR in Task {payload.task_name}: {payload.message}</b> '
+            if payload.task_name != -1:
+                message = f'<b style="color:darkred">CRITICAL ERROR in Task {payload.task_name}: {payload.message}</b> '
+            else:
+                message = f'<b style="color:darkred">CRITICAL ERROR: {payload.message}</b> '
+
             if payload.traceback:
                 trace_id = uuid.uuid4().hex
                 self.console.traceback_storage[trace_id] = payload.traceback
                 message += f'<a href="#id_{trace_id}" style="color:red;">[View Traceback]</a>'
-            self.console.append(message)
-        elif isinstance(payload, str):
-            self.console.append(payload)
 
+        self.console.append(f'[{timestamp}] {message}')
         # Auto Scroll
         sb = self.console.verticalScrollBar()
         sb.setValue(sb.maximum())

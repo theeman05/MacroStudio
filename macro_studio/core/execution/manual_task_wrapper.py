@@ -1,6 +1,6 @@
-from typing import TYPE_CHECKING
-
+import pyperclip
 import pydirectinput
+from typing import TYPE_CHECKING
 from PySide6.QtCore import QPoint
 
 from macro_studio.core.types_and_enums import TaskInterruptedException
@@ -22,22 +22,36 @@ def _isRelease(step):
 def _isScroll(step):
     return step.action_type == ActionType.MOUSE and isinstance(step.value[0], int)
 
-def _isTextFunction(step):
-    return step.action_type == ActionType.TEXT
+def pasteText(text_to_paste: str):
+    if not text_to_paste:
+        return
+
+    original_clipboard = pyperclip.paste()
+    try:
+        pyperclip.copy(text_to_paste)
+
+        yield from taskSleep(0.05)
+
+        pydirectinput.keyDown('ctrl')
+        pydirectinput.press('v')
+        pydirectinput.keyUp('ctrl')
+
+        yield from taskSleep(0.05)
+    finally:
+        pyperclip.copy(original_clipboard)
 
 
 class ManualTaskWrapper:
     def __init__(self, var_store: "VariableStore", model: "TaskModel"):
         self.steps: list[TimelineStep] = []
         self.var_store = var_store
-        self.auto_loop = False
+        self.step_idx = 0
         self.inputs_pending_release = set() # Set of inputs that had a partner
         self.active_solo_inputs = set() # Set of inputs to release upon task completion without partners
         self.updateModel(model)
 
     def updateModel(self, model: "TaskModel"):
         self.steps.clear()
-        self.auto_loop = model.auto_loop
         for raw_step in model.steps:
             step = TimelineStep.fromDict(raw_step)
             # Translate mouse and key stuff to pydirectinput
@@ -93,9 +107,7 @@ class ManualTaskWrapper:
     def _processStep(self, step):
         if step.value is None: return
 
-        if _isTextFunction(step):
-            pydirectinput.typewrite(step.value, delay=.001)
-        elif _isScroll(step):
+        if _isScroll(step):
             self._pressKeyOrBtn(step.value)
         elif _isPress(step):
             self._addToSoloOrPending(step, self.active_solo_inputs, self.inputs_pending_release)
@@ -117,33 +129,23 @@ class ManualTaskWrapper:
 
             self.active_solo_inputs.clear()
 
+    def resetState(self):
+        self.step_idx = 0
+        self._releasePendingInputs(release_solo=True)
+
     def runTask(self):
         try:
-            i = 0
-            step_ct = len(self.steps)
-            steps_without_yield = 0
-            while True:
-                try:
-                    while i < step_ct:
-                        step = self.steps[i]
-                        i += 1
-                        if self.auto_loop and i == step_ct: i = 0
+            while self.step_idx < len(self.steps):
+                step = self.steps[self.step_idx]
+                self.step_idx += 1
 
-                        if step.action_type == ActionType.DELAY:
-                            delay_time = step.value or 0
-                            yield from taskSleep(delay_time)
-                            steps_without_yield = 0
-                        else:
-                            self._processStep(step)
-                            steps_without_yield += 1
-
-                            if steps_without_yield >= FORCE_YIELD_AT:
-                                yield from taskSleep(0.001)
-                                steps_without_yield = 0
-                    # Return once all steps have been processed
-                    return
-                except TaskInterruptedException:
-                    self._releasePendingInputs()
-                    yield from taskWaitForResume()
-        finally:
-            self._releasePendingInputs(release_solo=True)
+                if step.action_type == ActionType.DELAY:
+                    delay_time = step.value or 0
+                    yield from taskSleep(delay_time)
+                elif step.action_type == ActionType.TEXT:
+                    yield from pasteText(step.value)
+                else:
+                    self._processStep(step)
+        except TaskInterruptedException:
+            self._releasePendingInputs()
+            yield from taskWaitForResume()
