@@ -41,7 +41,7 @@ The most efficient way to write tasks is using Python Generators. This allows th
 * **Key Rule:** Use `yield from taskSleep(seconds)` instead of `time.sleep()` in standard tasks.
 
 ```python
-from macro_studio import taskSleep
+from macro_studio import Controller, taskSleep
 
 
 def my_task():
@@ -73,7 +73,7 @@ When you add a task, the engine returns a **Task Controller**. You can use this 
     studio.addRunTask(self.manager_task)
 
 
-def manager_task(self, controller):
+def manager_task(self, controller: Controller):
     # Log directly to the ui
     controller.log("I am going to sleep")
     # Get a user defined variable from the engine
@@ -92,18 +92,18 @@ Sometimes you need to run blocking code (like heavy calculations or network requ
 
 ```python
 import threading
-from macro_studio import taskSleep, taskAwaitThread
+from macro_studio import Controller, taskSleep, taskAwaitThread
 
 
 # 1. Define the function to run in the thread
-def heavy_lifting(controller):
+def heavy_lifting(controller: Controller):
     print("Running in a separate thread!")
     # SAFE SLEEP: Checks if the user paused the engine while sleeping
     controller.sleep(5)
     print("Thread finished work.")
 
 
-def launcher(controller):
+def launcher(controller: Controller):
     # Create and start thread task with the argument being the task controller
     controller.log("Starting background work...")
     # Yield while the thread task is running
@@ -222,7 +222,8 @@ def task_fragile_count():
 Use `finally` to guarantee cleanup. You do not need to explicitly catch `TaskAbortException` because you *want* it to propagate up and stop the thread.
 
 ```python
-def task_write_log(controller):
+from macro_studio import Controller
+def task_write_log(controller: Controller):
     # Open a resource that MUST be closed later
     f = open("log.txt", "w")
     
@@ -243,10 +244,10 @@ def task_write_log(controller):
 Swallowing the exception causes the thread to stay alive as a "zombie" process, continuing to run even after the user thinks they stopped it.
 
 ```python
-from macro_studio import TaskAbortException
+from macro_studio import Controller, TaskAbortException
 
 
-def task_zombie_log(controller):
+def task_zombie_log(controller: Controller):
     while True:
         try:
             controller.sleep(1)

@@ -1,10 +1,10 @@
 import time
-from macro_studio import taskSleep
+from macro_studio import Controller, taskSleep
 
 
 # 1. Define a standalone task function
 # This task just counts time and proves that it can be paused by someone else.
-def anotherTask(controller):
+def anotherTask(controller: Controller):
     controller.log("Starting secondary task...")
     start_time = time.time()
 
@@ -18,17 +18,17 @@ def anotherTask(controller):
 
 # 2. Define the Main Macro Class
 class BasicMacro:
-    def __init__(self, creator):
-        self.engine = creator
+    def __init__(self, studio):
+        self.engine = studio
 
         # Register the tasks so the engine knows about them.
         # We store the controller for 'anotherTask' so we can manipulate it later.
-        self.other_task_ctrl = creator.addRunTask(anotherTask)
+        self.other_task_ctrl = studio.addRunTask(anotherTask)
 
         # Register our main coordination task
-        creator.addRunTask(self.mainCoordinator)
+        studio.addRunTask(self.mainCoordinator)
 
-    def mainCoordinator(self, controller):
+    def mainCoordinator(self, controller: Controller):
         """
         This task acts as the 'Manager'. It starts, pauses, and resumes the other task.
         """

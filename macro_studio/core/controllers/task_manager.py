@@ -74,14 +74,14 @@ class TaskManager(QObject):
 
     def startWorker(self):
         self.worker.pause_state.clear()
-        self.worker.running = True
+        self.worker.is_alive = True
         self.worker.reloadControllers(self._getEnabledControllers())
         global_logger.log("Starting Macro...")
         self.worker.start()
         self.watchdog_timer.start(WORKER_MONITOR_RATE_MS)
 
     def stopWorker(self):
-        self.worker.running = False
+        self.worker.is_alive = False
         self.worker.pause_state.clear()
         self.watchdog_timer.stop()
         return self._tryShowKillDialog()
@@ -97,14 +97,14 @@ class TaskManager(QObject):
          Returns:
              ``True`` if paused successfully, ``False`` if could not stop the worker.
         """
-        if self.worker.running and not self.worker.isPaused():
+        if self.worker.is_alive and not self.worker.isPaused():
             self.watchdog_timer.stop()
             self.worker.pause_state.trigger(interrupt)
             return self._tryShowKillDialog(True)
         return True
 
     def resumeWorker(self):
-        elapsed = self.worker.resume() if self.worker.running else None
+        elapsed = self.worker.resume() if self.worker.is_alive else None
         if elapsed is not None: self.watchdog_timer.start(WORKER_MONITOR_RATE_MS)
         return elapsed
 
@@ -119,7 +119,7 @@ class TaskManager(QObject):
             global_logger.log(f"Engine Auto-Protect: A task has held the worker for {time_since_last_pulse:.2f} seconds without yielding.", level=LogLevel.WARN)
             # Try to pause the worker so the deadlock thing will come up
             if self.pauseWorker(False):
-                if self.worker.running: # Somehow the task pulled through, clear the pause
+                if self.worker.is_alive: # Somehow the task pulled through, clear the pause
                     self.worker.pause_state.clear()
                 else:
                     self.engine.cancelMacroExecution()
@@ -151,7 +151,7 @@ class TaskManager(QObject):
                 del self.worker
                 self.worker = self._createAndMonitorWorker()
             else:
-                self.worker.running = True
+                self.worker.is_alive = True
                 self.worker.pause_state.clear()
                 global_logger.log("User chose to let the deadlocked task continue. Watchdog disabled for the remainder of this run", level=LogLevel.WARN)
                 return False # We walk away and let it keep spinning
