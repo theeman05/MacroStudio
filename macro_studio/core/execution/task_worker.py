@@ -178,7 +178,7 @@ class TaskWorker(QThread):
                         global_logger.log(f'Task "{controller.getName()}" finished.')
                 except Exception as e:
                     controller.stop()
-                    global_logger.logError(f"{str(e)}", task_name=controller.getName())
+                    controller.logError(f"{str(e)}")
             else:
                 self.msleep(delay_ms)
 
@@ -205,7 +205,7 @@ class TaskWorker(QThread):
                         self._paused_tasks.remove(controller)
                         if controller.isAlive():
                             # Only push living controllers
-                            self._unsafePushController(controller, *controller.delayAndGetSortKey(elapsed_on_soft))
+                            self._unsafePushController(controller, *controller.resumeFromWorkerPause(elapsed_on_soft))
 
         self.start()
         return elapsed

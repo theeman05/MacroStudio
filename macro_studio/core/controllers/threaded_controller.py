@@ -1,4 +1,3 @@
-import inspect
 import time, threading
 
 from macro_studio.core.types_and_enums import TaskInterruptedException, TaskAbortException
@@ -21,7 +20,6 @@ class ThreadedController(TaskController):
     ):
         super().__init__(scheduler, task_func, task_id, auto_loop, unique_name, is_enabled, task_args, task_kwargs)
 
-        self._thread_exception = None
         self._os_thread = None
         self._resume_event = threading.Event()
         self._resume_event.set()
@@ -41,39 +39,42 @@ class ThreadedController(TaskController):
         Spawns the OS thread and yields control back to the TaskWorker heap
         while polling the thread's health.
         """
-        self._thread_exception = None
         self._resume_event.set()
+        has_crashed = False
 
         def thread_target():
             """The actual code running inside the OS thread."""
+            nonlocal has_crashed
             try:
                 func(*final_args, **final_kwargs)
+            except TaskAbortException:
+                # The user or engine intentionally stopped the task. This is normal!
+                pass
+            except TaskInterruptedException:
+                # The user didn't handle the interrupt, log the aborted controller
+                self._worker.logControllerAborted(self)
             except Exception as e:
-                self._thread_exception = e
+                has_crashed = True
+                self.logError(f"{str(e)}")
 
         # Spawn the thread
         self._os_thread = threading.Thread(target=thread_target, daemon=True)
         self._os_thread.start()
+        # Generator Polling Loop (Runs on the Worker Thread)
+        while self._os_thread.is_alive():
+            # If the OS thread crashed, pull the exception up into the main engine!
+            if has_crashed:
+                self.stop()
+                break
 
-        try:
-            # Generator Polling Loop (Runs on the Worker Thread)
-            while self._os_thread.is_alive():
-                # If the OS thread crashed, pull the exception up into the main engine!
-                if self._thread_exception:
-                    raise self._thread_exception
-
-                try:
-                    # Short sleep to yield control back to the engine worker
-                    yield from taskSleep(0.05)
-                except TaskInterruptedException:
-                    # The Engine is Hard Paused.
-                    # The THREAD should handle its own pausing via controller.sleep(),
-                    # but WE (the monitor) must sit here and wait for the resume signal.
-                    yield from taskWaitForResume()
-        finally:
-            # Final check in case it crashed in the last millisecond
-            if self._thread_exception:
-                raise self._thread_exception
+            try:
+                # Short sleep to yield control back to the engine worker
+                yield from taskSleep(0.05)
+            except TaskInterruptedException:
+                # The Engine is Hard Paused.
+                # The THREAD should handle its own pausing via controller.sleep(),
+                # but WE (the monitor) must sit here and wait for the resume signal.
+                yield from taskWaitForResume()
 
     def pause(self, interrupt=False):
         self._resume_event.clear()
