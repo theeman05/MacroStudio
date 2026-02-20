@@ -10,7 +10,7 @@ Key Concepts:
 3. Cleanup: Using 'finally' to ensure resources are closed on Stop.
 """
 
-from macro_studio import MacroStudio, TaskInterruptedException, taskSleep, taskWaitForResume
+from macro_studio import MacroStudio, Controller, TaskInterruptedException, taskSleep, taskWaitForResume
 
 class DatabaseUpdaterTask:
     """
@@ -22,19 +22,19 @@ class DatabaseUpdaterTask:
         self.records_processed = 0
         self.is_connected = False
 
-    def connectDB(self, controller):
+    def connectDB(self, controller: Controller):
         """Simulate opening a resource."""
         controller.log("🔌 Connecting to database...")
         self.is_connected = True
         yield from taskSleep(0.5)  # Slight delay to simulate connection time
 
-    def disconnectDB(self, controller):
+    def disconnectDB(self, controller: Controller):
         """Simulate closing a resource."""
         if self.is_connected:
             controller.log("🔌 Disconnecting from database...")
             self.is_connected = False
 
-    def run(self, controller):
+    def run(self, controller: Controller):
         """
         The main entry point called by the Engine.
         """
@@ -79,13 +79,13 @@ class DatabaseUpdaterTask:
 
 # --- Engine Registration ---
 # If your engine expects a function, you can wrap the class like this:
-def runSafeTask(controller):
+def runSafeTask(controller: Controller):
     task = DatabaseUpdaterTask()
     yield from task.run(controller)
 
 if __name__ == '__main__':
-    creator = MacroStudio("Database Updater Macro")
+    studio = MacroStudio("Database Updater Macro")
 
-    creator.addRunTask(runSafeTask)
+    studio.addRunTask(runSafeTask)
 
-    creator.launch()
+    studio.launch()

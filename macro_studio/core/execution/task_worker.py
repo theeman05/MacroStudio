@@ -19,9 +19,9 @@ def _handleTasksOnHard(controller: "TaskController", notified_tasks: set):
     """
     was_in_notified = controller in notified_tasks
     notified_tasks.add(controller)
-    if not controller.pause_state.interrupted:
+    if not controller.isInterrupted():
         # Throw if not in notified already
-        return was_in_notified or controller.throwInterruptedError()
+        return was_in_notified or controller.throwInterruptedError(True)
     return False
 
 class TaskWorker(QThread):
@@ -30,7 +30,7 @@ class TaskWorker(QThread):
     def __init__(self, engine: "MacroStudio", loop_delay: float):
         super().__init__()
         self.pause_state = PauseState()
-        self.running = False
+        self.is_alive = False
         self.engine = engine
         self.loop_delay = loop_delay
         self.last_heartbeat = 0
@@ -114,13 +114,13 @@ class TaskWorker(QThread):
                 for controller in forcefully_stopped:
                     self.logControllerAborted(controller)
             else:
-                self.running = False
+                self.is_alive = False
                 self.pause_state.clear()
                 global_logger.log("System terminated all active tasks during interrupting pause.", level=LogLevel.WARN)
 
     def run(self):
         completed = False
-        while self.running and not self.isPaused():
+        while self.is_alive and not self.isPaused():
             self.last_heartbeat = time.perf_counter()
 
             should_sleep = True
@@ -128,7 +128,7 @@ class TaskWorker(QThread):
 
             with QMutexLocker(self._mutex):
                 task_heap = self._task_heap
-                if not self.running or self.isPaused():
+                if not self.is_alive or self.isPaused():
                     break
                 if task_heap:
                     current_time = time.perf_counter()
@@ -191,7 +191,7 @@ class TaskWorker(QThread):
             The duration paused for in seconds or ``None`` if not paused.
         """
         was_hard_pause = self.pause_state.interrupted
-        elapsed = self.pause_state.clear() if (self.running and not self.isRunning()) else None
+        elapsed = self.pause_state.clear() if (self.is_alive and not self.isRunning()) else None
         if elapsed is not None:
             elapsed_on_soft = elapsed if was_hard_pause is False else None
             with QMutexLocker(self._mutex):
@@ -200,10 +200,12 @@ class TaskWorker(QThread):
                 # Reset the task heap
                 self._task_heap = []
                 for controller in paused_snapshot:
-                    # Only unpause controllers that aren't manually paused
-                    if not controller.pause_state.active:
+                    # Only unpause controllers that are paused by the worker, or not paused at all
+                    if controller.state_change_by_worker or not controller.isPaused():
                         self._paused_tasks.remove(controller)
-                        self._unsafePushController(controller, *controller.delayAndGetSortKey(elapsed_on_soft))
+                        if controller.isAlive():
+                            # Only push living controllers
+                            self._unsafePushController(controller, *controller.delayAndGetSortKey(elapsed_on_soft))
 
         self.start()
         return elapsed

@@ -66,7 +66,7 @@ class MacroStudio:
         Returns:
             True if the app is running any macros, false otherwise.
         """
-        return self._manager.worker.running
+        return self._manager.worker.is_alive
 
     def startMacroExecution(self):
         """Begins macro execution. If the engine is paused, resumes execution."""
