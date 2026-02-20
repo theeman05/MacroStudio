@@ -73,9 +73,9 @@ class TaskManager(QObject):
         self._registerController(controller)
         return controller.context
 
-    def createThreadController(self, fun_in_thread, enabled: bool, auto_loop: bool, args, kwargs):
+    def createThreadController(self, fun_in_thread, enabled: bool, auto_loop: bool, task_args, kwargs):
         c_id = self.next_cid
-        controller = ThreadedController(self.worker, fun_in_thread, c_id, is_enabled=enabled, auto_loop=auto_loop, task_args=task_args, task_kwargs=task_kwargs)
+        controller = ThreadedController(self.worker, fun_in_thread, c_id, is_enabled=enabled, auto_loop=auto_loop, task_args=task_args, task_kwargs=kwargs)
         self._registerController(controller)
         return controller.context
 
