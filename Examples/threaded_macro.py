@@ -1,11 +1,11 @@
 import time
-from macro_studio import MacroStudio, TaskAbortException, TaskInterruptedException, taskAwaitThread, taskSleep
+from macro_studio import MacroStudio, ThreadController, TaskAbortException, TaskInterruptedException, taskSleep
 
 
-def _taskInThread(controller):
+def _taskInThread(controller: ThreadController):
     """
     A simple example of a task running in its own thread.
-    It demonstrates how to handle 'Hard Pauses' (Safety Stops) and Aborts correctly without crashing.
+    It demonstrates how to handle 'Interrupted Pauses' (Safety Stops) and Aborts correctly without crashing.
     """
     try:
         # We want to sleep for exactly 5 seconds
@@ -20,7 +20,7 @@ def _taskInThread(controller):
             # Sleep the thread for the target duration
             controller.sleep(target_duration)
         except TaskInterruptedException:
-            controller.log("[Thread] PAUSED!")
+            controller.log("[Thread] INTERRUPTION CAUGHT!")
         finally:
             # Always clean up resources here if needed
             controller.log("[Thread] Cleaning up resources...")
@@ -35,25 +35,19 @@ def _taskInThread(controller):
         # We generally don't want to use this, but if you do make sure to return immediately after to not have hanging threads
         controller.log("[Thread] STOPPED! Exiting task immediately.")
 
-def _threadedTask(controller):
-    # Create and start thread task with the argument being the task controller
-    controller.log("Starting background work...")
-    # Yield while the thread task is running
-    yield from taskAwaitThread(_taskInThread, controller=controller)
-
 class ThreadMacro:
     def __init__(self, creator: MacroStudio):
         self.engine = creator
 
         # Add run tasks to the creator
-        self.thread_task_controller = creator.addRunTask(_threadedTask)
+        self.thread_task_controller = creator.addThreadTask(_taskInThread)
         self.pauser_controller = creator.addRunTask(self.threadHardPauser)
 
     def threadHardPauser(self, controller):
-        # Let's attempt to hard pause the threaded task!
+        # Let's attempt to interrupt the threaded task!
         yield from taskSleep(1)
-        # After a second of running, pause the threaded task
-        controller.log("Hard pausing the thread controller!")
+        # After a second of running, interrupt the threaded task
+        controller.log("Interrupting the thread controller!")
         self.thread_task_controller.pause(True)
         yield from taskSleep(2)
         # After two seconds, unpause the threaded task so it can finish

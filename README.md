@@ -23,6 +23,14 @@ Predefine variables (Integers, Booleans, Regions, Points, etc.) that are exposed
 ### ⚡ Smart Config
 Variables are type-safe and validated instantly. As of right now, the engine supports complex types like `QRect` (Regions) and `QPoint` (Coordinates) with visual overlays, ensuring users don't have to guess pixel coordinates (but they still can if they want to)!
 
+### 🎥 Visual Task Recorder (No-Code)
+
+The entry barrier is now lowered! Using the `Recorder` tab, users can:
+
+* **Record:** Create new tasks by simply recording your mouse and keyboard actions, no coding required.
+* **Edit:** Fine-tune your recorded actions directly in the Engine's GUI (change delays, adjust coordinates) without opening a text editor.
+
+
 ### 🧬 Extensible Type System
 
 The Engine features a robust **Global Type Registry** that bridges the gap between Python objects and the User Interface. You don't need to manually build widgets for your settings; simply defining a type handler automatically grants you:
@@ -61,7 +69,7 @@ class BasicMacro:
 
 ### 2. Controlling Tasks
 
-When you add a task, the engine returns a **Task Controller**. You can use this object to pause, resume, or stop other tasks dynamically.
+When you add a task using `addRunTask`, the engine returns a **Task Controller**. You can use this object to pause, resume, or stop other tasks dynamically.
 
 ```python
     def __init__(self, studio):
@@ -86,36 +94,46 @@ def manager_task(self, controller: Controller):
 
 ### 3. Threaded Tasks (Blocking Code)
 
-Sometimes you need to run blocking code (like heavy calculations or network requests) that doesn't support generators. You can run these in a separate thread while keeping them synchronized with the engine's Pause/Stop system.
+Sometimes you need to run blocking code (like heavy calculations or network requests). This can be done using the `addThreadTask` method. You can run these in a separate thread while keeping them synchronized with the engine's Pause/Stop system.
 
-* **Key Rule:** Pass the `TaskController` to your thread and use `controller.sleep(seconds)`. This ensures the thread pauses correctly if the task is paused.
+* **Key Rule:** Use `controller.sleep(seconds)` for threaded tasks. This ensures the thread pauses correctly if the task is paused.
 
 ```python
-import threading
-from macro_studio import Controller, taskSleep, taskAwaitThread
+from macro_studio import ThreadController
 
 
 # 1. Define the function to run in the thread
-def heavy_lifting(controller: Controller):
+def heavy_lifting(controller: ThreadController):
     print("Running in a separate thread!")
     # SAFE SLEEP: Checks if the user paused the engine while sleeping
     controller.sleep(5)
     print("Thread finished work.")
 
-
-def launcher(controller: Controller):
-    # Create and start thread task with the argument being the task controller
-    controller.log("Starting background work...")
-    # Yield while the thread task is running
-    yield from taskAwaitThread(heavy_lifting, controller=controller)
-
-
 class ThreadMacro:
     def __init__(self, studio):
-        # 2. Add a task that spawns the thread
-        # We pass 'self.launcher' so we can get its controller
-        self.studio = studio
-        self.controller = studio.addRunTask(launcher)
+        # 2. Add the thread task to the macro
+        studio.addThreadTask(heavy_lifting)
+
+```
+
+### 4. Passing Custom Arguments
+Your task functions aren't limited to just the `controller`. You can pass any custom arguments and keyword arguments directly through the engine router to make your tasks dynamic and reusable!
+```python
+from macro_studio import MacroStudio, Controller, taskSleep
+
+# Define a dynamic task
+def farm_resource(controller: Controller, resource_name: str, farm_duration: int):
+    controller.log(f"Starting to farm {resource_name}...")
+    
+    # Use the custom arguments in your logic
+    yield from taskSleep(farm_duration)
+    controller.log(f"Finished farming {resource_name}!")
+
+studio = MacroStudio("Farm Macro")
+
+# Queue the same task multiple times with different arguments!
+studio.addRunTask(farm_resource, "Gold", farm_duration=60)
+studio.addRunTask(farm_resource, "Wood", farm_duration=120)
 
 ```
 
@@ -140,6 +158,8 @@ if __name__ == "__main__":
 * **Edit Configs:** Click any task to modify its variables.
 * **Start/Pause/Stop:** Use the global controls or manage tasks individually.
 * **Visual Debugging:** Hover over region variables to see them highlighted on screen.
+
+For more detailed examples, check out the `Examples/` folder!
 
 ### ⚙️ How it Works Under the Hood
 
@@ -198,7 +218,7 @@ def task_fragile_count():
     while counter < 10:
         # DANGER: If interrupted, this line raises TaskInterruptedException.
         # Since it isn't caught, the function aborts immediately!
-        yield from task_sleep(1) 
+        yield from taskSleep(1) 
         counter += 1
 
     # This line is NEVER reached if the task is interrupted.
@@ -308,16 +328,20 @@ The engine comes pre-configured with handlers for standard and GUI types:
 
 ---
 
-## 🔮 Roadmap & Coming Soon
+## 🗺️ Roadmap & Coming Soon
 
-I am actively working to make this the ultimate automation platform. Here is what is coming next:
+### 🖥️ Visual Task Manager Tab
+While Macro Studio currently uses a global start, stop, and resume button, the next major release will feature a comprehensive task manager tab. This dashboard will provide real-time, granular control over every active thread and generator in the engine.
 
-### 🎥 Visual Task Recorder (No-Code)
+Features currently in development include:
 
-I will be lowering the barrier to entry!
-
-* **Record:** Create new tasks by simply recording your mouse and keyboard actions—no coding required.
-* **Edit:** Fine-tune your recorded actions directly in the Engine's GUI (change delays, adjust coordinates) without opening a text editor.
+* **Live State Monitoring:** Watch individual tasks transition between *Running*, *Sleeping*, and *Stopped* in real-time.
+* **Granular Task Controls:**
+  * **Pause & Resume:** Soft-pause individual tasks for logic waits without affecting the rest of the engine.
+  * **Interrupt (Hard Pause):** Force a specific task to halt and run its safety/cleanup blocks immediately.
+  * **Stop:** Gracefully kill a running or sleeping task.
+  * **Restart:** Instantly reboot a stopped or crashed task from the beginning.
+  * **Enable / Disable:** Toggle tasks in and out of the execution queue without deleting their configuration.
 
 ---
 

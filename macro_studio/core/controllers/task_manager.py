@@ -9,6 +9,7 @@ from macro_studio.core.execution.task_worker import TaskWorker
 from macro_studio.core.types_and_enums import LogLevel
 from macro_studio.core.utils import global_logger
 from .task_controller import TaskController
+from .threaded_controller import ThreadedController
 
 if TYPE_CHECKING:
     from macro_studio.core.data import Profile, TaskModel
@@ -20,7 +21,7 @@ PULSE_DEADLOCK_DURATION_S = 5.0
 class ManualTaskController(TaskController):
     def __init__(self, worker, var_store, task_model: "TaskModel", cid: int):
         self._wrapper = ManualTaskWrapper(var_store, task_model)
-        super().__init__(scheduler=worker,
+        super().__init__(worker=worker,
                          task_func=self._wrapper.runTask,
                          task_id=cid,
                          unique_name=task_model.name,
@@ -66,11 +67,17 @@ class TaskManager(QObject):
         self.loop_delay = delay
         self.worker.loop_delay = delay
 
-    def createController(self, task_func, auto_loop: bool):
+    def createController(self, task_func, enabled: bool, auto_loop: bool, task_args, task_kwargs):
         c_id = self.next_cid
-        controller = TaskController(self.worker, task_func, c_id, auto_loop=auto_loop)
+        controller = TaskController(self.worker, task_func, c_id, is_enabled=enabled, auto_loop=auto_loop, task_args=task_args, task_kwargs=task_kwargs)
         self._registerController(controller)
-        return controller
+        return controller.context
+
+    def createThreadController(self, fun_in_thread, enabled: bool, auto_loop: bool, args, kwargs):
+        c_id = self.next_cid
+        controller = ThreadedController(self.worker, fun_in_thread, c_id, is_enabled=enabled, auto_loop=auto_loop, task_args=task_args, task_kwargs=task_kwargs)
+        self._registerController(controller)
+        return controller.context
 
     def startWorker(self):
         self.worker.pause_state.clear()
