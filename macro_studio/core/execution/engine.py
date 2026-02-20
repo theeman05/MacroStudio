@@ -6,6 +6,8 @@ from macro_studio.core.data import Profile
 from macro_studio.core.utils import global_logger
 from macro_studio.ui.main_window import MainWindow
 from macro_studio.core.controllers.task_manager import TaskManager
+from macro_studio.api.task_context import TaskContext as Controller
+from macro_studio.api.thread_context import ThreadContext as ThreadedController
 
 
 class MacroStudio:
@@ -50,16 +52,33 @@ class MacroStudio:
         var_config = self._profile.vars.get(key)
         return var_config and var_config.value or None
 
-    def addRunTask(self, task_func: TaskFunc, auto_loop=False):
+    def addRunTask(self, task_func: TaskFunc, *args, enabled=True, auto_loop=False, **kwargs) -> Controller:
         """
-        Add a task function to run when executing macros.
+        Add a basic task function to run when executing macros.
         Args:
             task_func: The function.
+            args: Arguments to pass to the function.
+            enabled: If the task should run upon using the global start method.
             auto_loop: If the controller should restart itself upon finishing.
+            kwargs: Keyword arguments to pass to the function.
         Returns:
             The task controller handle.
         """
-        return self._manager.createController(task_func, auto_loop)
+        return self._manager.createController(task_func, enabled, auto_loop, args, kwargs)
+
+    def addThreadTask(self, fun_in_thread, *args, enabled=True, auto_loop=False, **kwargs) -> ThreadedController:
+        """
+        Add an advanced thread function to run when executing macros.
+        Args:
+            fun_in_thread: The function to run in the thread.
+            args: Arguments to pass to the function.
+            enabled: If the task should run upon using the global start method.
+            auto_loop: If the controller should restart itself upon finishing.
+            kwargs: Keyword arguments to pass to the function.
+        Returns:
+            The thread task controller handle.
+        """
+        return self._manager.createThreadController(fun_in_thread, enabled, auto_loop, args, kwargs)
 
     def isRunningMacros(self):
         """

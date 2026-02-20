@@ -3,7 +3,7 @@ from enum import Enum, auto
 from PySide6.QtCore import QMutex, QMutexLocker
 from typing import TYPE_CHECKING, Generator, Hashable
 
-from macro_studio.core.types_and_enums import TaskFunc, TaskAbortException, TaskInterruptedException, LogLevel
+from macro_studio.core.types_and_enums import TaskInterruptedException, LogLevel
 from macro_studio.core.utils import global_logger
 from macro_studio.api.task_context import TaskContext
 
@@ -19,22 +19,41 @@ class TaskState(Enum):
 
 
 class TaskController:
-    def __init__(self, scheduler: "TaskWorker", task_func: TaskFunc, task_id: int, auto_loop=False, unique_name: str | int=None, is_enabled=True):
+    def __init__(
+            self,
+            worker: "TaskWorker",
+            task_func,
+            task_id: int,
+            auto_loop=False,
+            unique_name: str | int = None,
+            is_enabled=True,
+            task_args: tuple = (),  # Default to empty tuple
+            task_kwargs: dict = None  # Default to None for mutable safety
+    ):
         self.func = task_func
         self.auto_loop = auto_loop
         self.state_change_by_worker = False
+        self.context = self._createContext()
 
         self._state = TaskState.RUNNING if is_enabled else TaskState.STOPPED
         self._pause_timestamp = 0.0
         self._wake_time = 0.0
         self._is_enabled = is_enabled
         self._mutex = QMutex()
-        self._scheduler = scheduler
+        self._worker = worker
         self._id = task_id
         self._name = unique_name or task_id
         self._generator: Generator | None = None
         self._generation = 0
-        self._context = TaskContext(self)
+        self._task_args = task_args
+        self._task_kwargs = task_kwargs if task_kwargs is not None else {}
+
+    def _createContext(self):
+        """
+        Factory method to generate the correct API wrapper.
+        Can be safely overridden by subclasses.
+        """
+        return TaskContext(self)
 
     @property
     def wake_time(self):
@@ -81,7 +100,7 @@ class TaskController:
         self._wake_time = wake_time or 0
         self._state = new_state
         self.state_change_by_worker = False
-        self._generator = self._tryWrapFunc() if new_state != TaskState.STOPPED else None
+        self._generator = self._tryWrapFunc(*self._getArgsAndKwargs(self.func)) if new_state != TaskState.STOPPED else None
 
     def throwInterruptedError(self, by_worker=False):
         """
@@ -104,20 +123,33 @@ class TaskController:
     def _unsafeGetSortKey(self):
         return self._wake_time, self._id, self._generation
 
-    def _tryWrapFunc(self):
-        """If the function isn't a generator, wraps it into a generator function"""
-        func = self.func
+    def _getArgsAndKwargs(self, func):
         sig = inspect.signature(func)
-        kwargs = {}
 
-        # Check if they want the 'controller' argument
+        # Convert the tuple to a mutable list so we can inject into it
+        final_args = list(self._task_args)
+        final_kwargs = dict(self._task_kwargs)
+
+        # Intelligently inject the Context Wrapper
         if 'controller' in sig.parameters:
-            kwargs['controller'] = self._context  # Inject the context
+            params = list(sig.parameters.keys())
 
+            # If the scriptwriter put 'controller' as the very first argument
+            if params and params[0] == 'controller':
+                # Shift all user args to the right by inserting at index 0
+                final_args.insert(0, self.context)
+            else:
+                # Otherwise, safely pass it as a keyword argument
+                final_kwargs['controller'] = self.context
+
+        return func, final_args, final_kwargs
+
+    def _tryWrapFunc(self, func, final_args, final_kwargs):
+        """If the function isn't a generator, wraps it into a generator function"""
         if inspect.isgeneratorfunction(func):
-            yield from func(**kwargs)
+            yield from func(*final_args, **final_kwargs)
         else:
-            func(**kwargs)
+            func(*final_args, **final_kwargs)
             yield
 
     def resetGeneratorAndGetSortKey(self, new_state: TaskState = TaskState.RUNNING, wake_time: float = None):
@@ -145,7 +177,7 @@ class TaskController:
         Args:
             wake_time: The wake time for the task to run at after restarting.
         """
-        self._scheduler.moveToActiveAndReschedule(self, self.resetGeneratorAndGetSortKey(wake_time=wake_time))
+        self._worker.moveToActiveAndReschedule(self, self.resetGeneratorAndGetSortKey(wake_time=wake_time))
 
     def pause(self, interrupt=False):
         """Halts the task and shifts its internal state."""
@@ -163,7 +195,7 @@ class TaskController:
         if not interrupt or self.throwInterruptedError():
             return True
 
-        self._scheduler.logControllerAborted(self)
+        self._worker.logControllerAborted(self)
         return False
 
     def resume(self):
@@ -171,7 +203,7 @@ class TaskController:
         was_hard_pause = self.isInterrupted()
 
         elapsed = None
-        if self._scheduler.is_alive and self.isPaused():
+        if self._worker.is_alive and self.isPaused():
             elapsed = time.perf_counter() - self._pause_timestamp
 
         self._state = TaskState.RUNNING
@@ -182,7 +214,7 @@ class TaskController:
             with QMutexLocker(self._mutex):
                 self._generation += 1
                 self._wake_time = 0 if was_hard_pause else (self._wake_time + elapsed)
-                self._scheduler.moveToActiveAndReschedule(self, self._unsafeGetSortKey())
+                self._worker.moveToActiveAndReschedule(self, self._unsafeGetSortKey())
 
         return elapsed
 
@@ -191,7 +223,7 @@ class TaskController:
         with QMutexLocker(self._mutex):
             return self._generation
 
-    def delayAndGetSortKey(self, delay: float=None):
+    def resumeFromWorkerPause(self, delay: float=None):
         """
         Returns:
 
@@ -203,82 +235,6 @@ class TaskController:
             self._wake_time = 0 if delay is None else (self._wake_time + delay)
             return self._wake_time, self._id, self._generation
 
-    def _waitWhileSoftPaused(self):
-        while self.isPaused() or self._scheduler.isPaused():
-            # Check for Hard Pause/Stop inside the pause loop so we don't get stuck
-            if not self.isAlive() or self.isInterrupted() or self._scheduler.pause_state.interrupted:
-                return
-
-            time.sleep(0.1)  # Low CPU usage wait
-
-    def sleep(self, duration: float = .01):
-        """
-        Blocks the current thread with high precision.
-        Args:
-            duration: Duration to sleep the thread for in seconds.
-        Raises:
-            TaskAbortException: If stopped while sleeping.
-            TaskInterruptedException: If interrupted while sleeping.
-        """
-        if duration <= 0:
-            return
-
-        start_time = time.perf_counter()
-        target_time = start_time + duration
-
-        while True:
-            # Check for "Hard Pause" (Stop with Cleanup)
-            if self.isInterrupted() or self._scheduler.pause_state.interrupted:
-                raise TaskInterruptedException("Hard Pause triggered")
-
-            if not self.isAlive():
-                raise TaskAbortException("Task stopped.")
-
-            # Check for "Soft Pause" (Resumable)
-            if self.isPaused() or self._scheduler.isPaused():
-                # FREEZE TIME: Calculate how much time was left
-                remaining_at_pause = target_time - time.perf_counter()
-
-                # Enter a low-resource loop while waiting for resume
-                self._waitWhileSoftPaused()
-
-                # RESUME TIME: We are back! Reset target based on NEW current time
-                # We add the saved 'remaining' time to right now.
-                target_time = time.perf_counter() + remaining_at_pause
-
-                # Restart the loop to re-check status immediately
-                continue
-
-            current_time = time.perf_counter()
-            remaining = target_time - current_time
-
-            # If time is up, we are done
-            if remaining <= 0:
-                break
-
-            # Smart Sleep Logic
-            if remaining > 0.02:
-                # Sleep small chunks so we can react to Pause/Stop signals quickly
-                # Sleeping the full 'remaining' would make the method less accurate
-                time.sleep(min(remaining - 0.005, 0.1))
-            else:
-                # Spin-wait for the final millisecond precision
-                pass
-
-    def waitForResume(self):
-        """
-        Blocks the thread **ONLY** if the system or this task is in an interrupted pause.
-        If the task is just 'Soft Paused' (logic wait), this returns immediately.
-        Raises:
-            TaskAbortException: If stopped while waiting.
-        """
-        while self.isAlive() and (self.isInterrupted() or self._scheduler.pause_state.interrupted):
-            time.sleep(0.1)  # Low CPU usage wait
-
-        # If one of the two are no longer alive, throw abort exception
-        if not (self._scheduler.isRunning() and self.isAlive()):
-            raise TaskAbortException("Worker stopped while waiting for resume.")
-
     def log(self, *args, level: LogLevel=LogLevel.INFO):
         global_logger.log(*args, level=level, task_name=self._name)
 
@@ -286,7 +242,7 @@ class TaskController:
         global_logger.logError(error_msg, trace, self._name)
 
     def getVar(self, key: Hashable):
-        return self._scheduler.engine.getVar(key)
+        return self._worker.engine.getVar(key)
 
     def setScheduler(self, scheduler: "TaskWorker"):
         """
@@ -295,7 +251,7 @@ class TaskController:
             scheduler: The new scheduler to assign to this controller.
         """
         assert scheduler is not None
-        self._scheduler = scheduler
+        self._worker = scheduler
         self._mutex = QMutex()
         prev_gen = self._generator
         if prev_gen:

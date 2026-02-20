@@ -29,7 +29,10 @@ class TaskContext:
 
     @property
     def is_alive(self) -> bool:
-        """ Returns True if the task exists in the engine (Running OR Paused)."""
+        """
+        Returns True as long as the task hasn't been explicitly killed,
+        regardless of what the master worker is doing.
+        """
         return self._controller.isAlive()
 
     # --- Methods ---
@@ -71,26 +74,6 @@ class TaskContext:
     def stop(self):
         """Attempts to stop a task on its next cycle."""
         self._controller.stop()
-
-    def sleep(self, duration: float = 0.01):
-        """
-        Blocks the current thread with high precision.
-        Args:
-            duration: Duration to sleep the thread for in seconds.
-        Raises:
-            TaskAbortException: If stopped while sleeping.
-            TaskInterruptedException: If interrupted while sleeping.
-        """
-        self._controller.sleep(duration)
-
-    def waitForResume(self):
-        """
-        Blocks the thread **ONLY** if the system or this task is in an interrupted pause.
-        If the task is just 'Soft Paused' (logic wait), this returns immediately.
-        Raises:
-            TaskAbortException: If stopped while waiting.
-        """
-        self._controller.waitForResume()
 
     def log(self, *args, level: LogLevel = LogLevel.INFO):
         """
