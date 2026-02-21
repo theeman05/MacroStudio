@@ -11,15 +11,17 @@ from macro_studio.core.utils import FileIO, global_logger
 class TaskModel:
     name: str
     steps: list=None
-    auto_loop: bool=False
+    repeat: bool=False
+    disabled: bool=False
 
     def __post_init__(self):
         if self.steps is None: self.steps = []
 
     def toDict(self):
         serial = {"name": self.name}
-        GlobalTypeHandler.setIfEvals("auto_loop", self.auto_loop, serial)
+        GlobalTypeHandler.setIfEvals("repeat", self.repeat, serial)
         GlobalTypeHandler.setIfEvals("steps", self.steps, serial)
+        GlobalTypeHandler.setIfEvals("disabled", self.disabled, serial)
         return serial
 
 class TaskStore(BaseStore):
@@ -27,7 +29,6 @@ class TaskStore(BaseStore):
     taskAdded = Signal(TaskModel)
     taskRemoved = Signal(str) # (task name)
     taskSaved = Signal(TaskModel)
-    taskLoopChanged = Signal(str, bool)
 
     def __init__(self):
         super().__init__("tasks")
@@ -89,22 +90,13 @@ class TaskStore(BaseStore):
             self._active_idx = task_idx
             self.activeStepSet.emit()
 
-    def setActiveLoopStatus(self, auto_loop: bool):
-        task = self.getActiveTask()
-        if task:
-            if task.auto_loop != auto_loop:
-                task.auto_loop = auto_loop
-                self.taskLoopChanged.emit(task.name, auto_loop)
-        else:
-            self._silentCreateTask(TaskModel("New Task", auto_loop=auto_loop))
-
     def duplicate_task(self, task_name: str=None):
         set_as_active = task_name is None
         ref_task_idx = self.getTaskIdx(task_name) if task_name is not None else self._active_idx
         if ref_task_idx == -1: return None
         ref_task = self.tasks[ref_task_idx]
         new_name = self.generateUniqueName(task_name)
-        return self.createTask(TaskModel(new_name, steps=ref_task.steps, auto_loop=ref_task.auto_loop), set_as_active=set_as_active)
+        return self.createTask(TaskModel(new_name, steps=ref_task.steps, repeat=ref_task.repeat), set_as_active=set_as_active)
 
     def getActiveTask(self):
         return self.tasks[self._active_idx] if self.tasks else None

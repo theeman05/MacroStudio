@@ -21,11 +21,23 @@ PULSE_DEADLOCK_DURATION_S = 5.0
 class ManualTaskController(TaskController):
     def __init__(self, worker, var_store, task_model: "TaskModel", cid: int):
         self._wrapper = ManualTaskWrapper(var_store, task_model)
-        super().__init__(worker=worker,
-                         task_func=self._wrapper.runTask,
-                         task_id=cid,
-                         unique_name=task_model.name,
-                         auto_loop=task_model.auto_loop)
+        super().__init__(worker=worker, task_func=self._wrapper.runTask, task_id=cid, repeat=task_model.repeat,
+                         unique_name=task_model.name,is_enabled=not task_model.disabled)
+
+    @property
+    def repeat(self):
+        return self._wrapper.model.repeat
+
+    @repeat.setter
+    def repeat(self, value):
+        self._wrapper.model.repeat = value
+
+    def isEnabled(self):
+        return not self._wrapper.model.disabled
+
+    def setEnabled(self, enabled: bool):
+        self._wrapper.model.disabled = not enabled
+        return super().setEnabled(enabled)
 
     def updateModel(self, task_model: "TaskModel"):
         self._wrapper.updateModel(task_model)
@@ -53,7 +65,6 @@ class TaskManager(QObject):
         tasks.taskAdded.connect(self._onManualTaskAdded)
         tasks.taskRemoved.connect(self._onManualTaskRemoved)
         tasks.taskSaved.connect(self._onManualTaskSaved)
-        tasks.taskLoopChanged.connect(self._onManualTaskLoopChange)
         self.watchdog_timer.timeout.connect(self._checkWorkerHealth)
 
         self._onProfileLoaded()
@@ -67,15 +78,17 @@ class TaskManager(QObject):
         self.loop_delay = delay
         self.worker.loop_delay = delay
 
-    def createController(self, task_func, enabled: bool, auto_loop: bool, task_args, task_kwargs):
+    def createController(self, task_func, enabled: bool, repeat: bool, task_args, task_kwargs):
         c_id = self.next_cid
-        controller = TaskController(self.worker, task_func, c_id, is_enabled=enabled, auto_loop=auto_loop, task_args=task_args, task_kwargs=task_kwargs)
+        controller = TaskController(self.worker, task_func, c_id, repeat=repeat, is_enabled=enabled,
+                                    task_args=task_args, task_kwargs=task_kwargs)
         self._registerController(controller)
         return controller.context
 
-    def createThreadController(self, fun_in_thread, enabled: bool, auto_loop: bool, task_args, kwargs):
+    def createThreadController(self, fun_in_thread, enabled: bool, repeat: bool, task_args, kwargs):
         c_id = self.next_cid
-        controller = ThreadedController(self.worker, fun_in_thread, c_id, is_enabled=enabled, auto_loop=auto_loop, task_args=task_args, task_kwargs=kwargs)
+        controller = ThreadedController(self.worker, fun_in_thread, c_id, is_enabled=enabled, task_args=task_args,
+                                        task_kwargs=kwargs)
         self._registerController(controller)
         return controller.context
 
@@ -91,6 +104,7 @@ class TaskManager(QObject):
         self.worker.is_alive = False
         self.worker.pause_state.clear()
         self.watchdog_timer.stop()
+        self.worker.handleStoppedEnd()
         return self._tryShowKillDialog()
 
     def pauseWorker(self, interrupt):
@@ -198,10 +212,3 @@ class TaskManager(QObject):
             print(f"Warning: Tried to save '{task_model.name}', but no controller was found in the registry.")
         else:
             print(f"Warning: '{task_model.name}' is a {type(controller).__name__}, not a ManualTaskController.")
-
-    def _onManualTaskLoopChange(self, task_name, auto_loop):
-        controller = self.controllers.get(task_name)
-        if controller:
-            controller.auto_loop = auto_loop
-        else:
-            print(f"Warning: Tried to save '{task_name}', but no controller was found in the registry.")

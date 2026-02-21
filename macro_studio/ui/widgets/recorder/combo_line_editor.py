@@ -115,7 +115,7 @@ class SneakyComboAndLineEditor(SneakyWidget):
         self.combo_line_edit.manual_edit.installEventFilter(self)
         self.combo_line_edit.variable_combo.activated.connect(lambda: self.finishEditing(self.combo_line_edit.variable_combo.currentData()))
         self.combo_line_edit.manual_edit.editingFinished.connect(self.validateThenFinish)
-        self.setToolTip("Right click to for more options")
+        self.setToolTip("Right click for more options")
         self.setMouseTracking(True)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._openMenu)

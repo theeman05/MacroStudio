@@ -8,7 +8,7 @@ from PySide6.QtGui import QDrag, QPainter, QColor, QPen, QBrush, QPalette
 from PySide6.QtCore import Qt, QMimeData, QSize
 
 from macro_studio.core.recording import ActionType, TimelineStep
-from macro_studio.ui.shared import DEFAULT_ICON_COLOR, SELECTED_COLOR, HoverButton
+from macro_studio.ui.shared import IconColor, HoverButton
 
 if TYPE_CHECKING:
     from macro_studio.ui.tabs.recorder_tab import RecorderTab
@@ -34,7 +34,7 @@ TRASH_ICON = "ph.trash"
 def createQtIcon(config_or_icon: str | ActionConfig, color_override: str=None):
     if isinstance(config_or_icon, str):
         icon = config_or_icon
-        color = DEFAULT_ICON_COLOR
+        color = IconColor.DEFAULT
     else:
         icon = config_or_icon.icon_name
         color = config_or_icon.color
@@ -177,7 +177,7 @@ class DragPreviewWidget(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        background_color = QColor(SELECTED_COLOR)
+        background_color = QColor(IconColor.SELECTED)
 
         painter.setBrush(QBrush(background_color))
         painter.setPen(QPen(background_color, 1))

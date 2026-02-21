@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt, QItemSelection, QTimer, QPoint, QEvent
 
 from macro_studio.core.recording import ActionType, TimelineStep
 from .recorder_main import (createIconLabel, HoverButton, createQtIcon, TRASH_ICON, GRIP_CONFIG, ACTION_TYPES,
-                            SELECTED_COLOR, DragPreviewWidget)
+                            IconColor, DragPreviewWidget)
 from .action_bindings import KeyCaptureEditor, SneakyDbSpinBox, SneakyTextEditor
 from .combo_line_editor import DualMouseEditor
 
@@ -415,7 +415,7 @@ class DroppableTimelineWidget(QListWidget):
 
         painter = QPainter(self.viewport())
         if self._drag_target_row != -1:
-            pen = QPen(QColor(SELECTED_COLOR), 2)
+            pen = QPen(QColor(IconColor.SELECTED), 2)
             painter.setPen(pen)
 
             # Determine Y coordinates
@@ -448,7 +448,7 @@ class DroppableTimelineWidget(QListWidget):
 
     def _draw_connection_line(self, painter, rect1, rect2):
         # Configuration
-        line_color = QColor(SELECTED_COLOR)
+        line_color = QColor(IconColor.SELECTED)
         dot_radius = 2
 
         target_x = rect1.x() + 34

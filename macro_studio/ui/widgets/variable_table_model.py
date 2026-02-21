@@ -4,7 +4,7 @@ from PySide6.QtGui import QBrush, QColor
 
 from macro_studio.core.controllers.capture_type_registry import GlobalCaptureRegistry
 from macro_studio.core.controllers.type_handler import GlobalTypeHandler
-from macro_studio.ui.shared import EMPTY_VALUE_STR, SELECTED_COLOR
+from macro_studio.ui.shared import EMPTY_VALUE_STR, IconColor
 
 if TYPE_CHECKING:
     from macro_studio.core.data import VariableStore, VariableConfig
@@ -56,7 +56,7 @@ class VariableTableModel(QAbstractTableModel):
                     return QBrush(QColor("#FFCDD2"))
             case Qt.ItemDataRole.ForegroundRole:
                 if index.column() == 1 and GlobalCaptureRegistry.containsType(config.data_type):
-                    return QBrush(QColor(SELECTED_COLOR))
+                    return QBrush(QColor(IconColor.SELECTED))
                 elif index.column() == 2 and config.value is None:
                     return QBrush(QColor("gray"))
             case Qt.ItemDataRole.DisplayRole:

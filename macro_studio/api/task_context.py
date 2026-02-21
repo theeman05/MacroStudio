@@ -10,12 +10,12 @@ class TaskContext:
 
     # --- Properties ---
     @property
-    def auto_loop(self):
-        return self._controller.auto_loop
+    def repeat(self):
+        return self._controller.repeat
 
-    @auto_loop.setter
-    def auto_loop(self, value: bool):
-        self._controller.auto_loop = value
+    @repeat.setter
+    def repeat(self, value: bool):
+        self._controller.repeat = value
 
     @property
     def is_paused(self) -> bool:
@@ -30,8 +30,13 @@ class TaskContext:
     @property
     def is_alive(self) -> bool:
         """
-        Returns True as long as the task hasn't been explicitly killed,
-        regardless of what the master worker is doing.
+        Checks if the task is currently active or armed for execution.
+
+        Returns:
+            True if the task has not reached a terminal graveyard state
+            (e.g., Stopped, Finished, or Crashed). This local state remains
+            True even if the master engine's global worker is currently paused
+            or completely offline.
         """
         return self._controller.isAlive()
 

@@ -18,7 +18,7 @@ class MacroStudio:
         self._profile_name = macro_name
 
         # Setup UI stuff
-        self.ui = MainWindow(self._profile)
+        self.ui = MainWindow(self._manager, self._profile)
         self.app = self.ui.app
         self.overlay = self.ui.overlay
 
@@ -52,33 +52,33 @@ class MacroStudio:
         var_config = self._profile.vars.get(key)
         return var_config and var_config.value or None
 
-    def addRunTask(self, task_func: TaskFunc, *args, enabled=True, auto_loop=False, **kwargs) -> Controller:
+    def addRunTask(self, task_func: TaskFunc, *args, enabled=True, repeat=False, **kwargs) -> Controller:
         """
         Add a basic task function to run when executing macros.
         Args:
             task_func: The function.
             args: Arguments to pass to the function.
             enabled: If the task should run upon using the global start method.
-            auto_loop: If the controller should restart itself upon finishing.
+            repeat: If the controller should restart itself upon finishing.
             kwargs: Keyword arguments to pass to the function.
         Returns:
             The task controller handle.
         """
-        return self._manager.createController(task_func, enabled, auto_loop, args, kwargs)
+        return self._manager.createController(task_func, enabled, repeat, args, kwargs)
 
-    def addThreadTask(self, fun_in_thread, *args, enabled=True, auto_loop=False, **kwargs) -> ThreadedController:
+    def addThreadTask(self, fun_in_thread, *args, enabled=True, repeat=False, **kwargs) -> ThreadedController:
         """
         Add an advanced thread function to run when executing macros.
         Args:
             fun_in_thread: The function to run in the thread.
             args: Arguments to pass to the function.
             enabled: If the task should run upon using the global start method.
-            auto_loop: If the controller should restart itself upon finishing.
+            repeat: If the controller should restart itself upon finishing.
             kwargs: Keyword arguments to pass to the function.
         Returns:
             The thread task controller handle.
         """
-        return self._manager.createThreadController(fun_in_thread, enabled, auto_loop, args, kwargs)
+        return self._manager.createThreadController(fun_in_thread, enabled, repeat, args, kwargs)
 
     def isRunningMacros(self):
         """

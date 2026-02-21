@@ -12,13 +12,13 @@ class ThreadedController(TaskController):
             scheduler,
             task_func,
             task_id: int,
-            auto_loop=False,
+            repeat=False,
             unique_name: str | int = None,
             is_enabled=True,
             task_args: tuple = (),  # Default to empty tuple
             task_kwargs: dict = None  # Default to None for mutable safety
     ):
-        super().__init__(scheduler, task_func, task_id, auto_loop, unique_name, is_enabled, task_args, task_kwargs)
+        super().__init__(scheduler, task_func, task_id, repeat, unique_name, is_enabled, task_args, task_kwargs)
 
         self._os_thread = None
         self._resume_event = threading.Event()
@@ -40,11 +40,8 @@ class ThreadedController(TaskController):
         while polling the thread's health.
         """
         self._resume_event.set()
-        has_crashed = False
-
         def thread_target():
             """The actual code running inside the OS thread."""
-            nonlocal has_crashed
             try:
                 func(*final_args, **final_kwargs)
             except TaskAbortException:
@@ -52,9 +49,10 @@ class ThreadedController(TaskController):
                 pass
             except TaskInterruptedException:
                 # The user didn't handle the interrupt, log the aborted controller
-                self._worker.logControllerAborted(self)
+                self.worker.logControllerAborted(self)
+                self._state = TaskState.CRASHED
             except Exception as e:
-                has_crashed = True
+                self._state = TaskState.CRASHED
                 self.logError(f"{str(e)}")
 
         # Spawn the thread
@@ -63,8 +61,8 @@ class ThreadedController(TaskController):
         # Generator Polling Loop (Runs on the Worker Thread)
         while self._os_thread.is_alive():
             # If the OS thread crashed, pull the exception up into the main engine!
-            if has_crashed:
-                self.stop()
+            if self._state == TaskState.CRASHED:
+                self.stop(state=TaskState.CRASHED)
                 break
 
             try:
@@ -111,7 +109,7 @@ class ThreadedController(TaskController):
                 raise TaskAbortException("Task stopped.")
 
             # Check for interrupt
-            if self.isInterrupted() or self._worker.pause_state.interrupted:
+            if self.isInterrupted() or self.worker.pause_state.interrupted:
                 self._resume_event.clear()
                 raise TaskInterruptedException("Hard pause triggered!")
 
@@ -153,5 +151,5 @@ class ThreadedController(TaskController):
         self._resume_event.wait()
 
         # If one of the two are no longer alive, throw abort exception
-        if not (self._worker.is_alive and self.isAlive()):
+        if not (self.worker.is_alive and self.isAlive()):
             raise TaskAbortException("Worker stopped while waiting for resume.")

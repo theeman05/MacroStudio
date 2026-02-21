@@ -11,6 +11,7 @@ from pynput import keyboard
 from macro_studio.core.types_and_enums import LogPacket, LogLevel, LogErrorPacket
 from macro_studio.core.utils import global_logger
 from .tabs.recorder_tab import RecorderTab
+from .tabs.task_manager_tab import TaskManagerTab
 from .theme_manager import ThemeManager
 from .tabs.variables_tab import VariablesTab
 from .overlay import TransparentOverlay
@@ -23,10 +24,10 @@ class MainWindow(QMainWindow):
     pause_signal = Signal()
     hotkey_signal = Signal(str)
 
-    def __init__(self, profile):
+    def __init__(self, task_manager, profile):
         self.app = QApplication(sys.argv)
         super().__init__()
-        self.setWindowTitle(f"Macro Engine v1.5")
+        self.setWindowTitle(f"Macro Studio v1.6")
         self.resize(900, 700)
         self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint)
 
@@ -36,6 +37,7 @@ class MainWindow(QMainWindow):
 
         # 1. Core UI Components
         self.overlay = TransparentOverlay(self)
+        self.manager_tab = TaskManagerTab(task_manager)
         self.variables_tab = VariablesTab(profile.vars, self.overlay)
         self.recorder_tab = RecorderTab(self.overlay, profile)
         ThemeManager.applyTheme(self)
@@ -54,6 +56,7 @@ class MainWindow(QMainWindow):
 
         # 4. Create Tabs
         self.tabs = QTabWidget()
+        self.tabs.addTab(self.manager_tab, "Task Manager")
         self.tabs.addTab(self.variables_tab, "Variables")
         self.tabs.addTab(self.recorder_tab, "Recorder")
         self.main_layout.addWidget(self.tabs)
@@ -232,6 +235,7 @@ class MainWindow(QMainWindow):
         elif hotkey_id == "F8":
             self.recorder_tab.toggleRecording()
         elif hotkey_id == "F10":
+            self.stop_signal.emit(False)
             self.stopMacroVisuals()
 
     def closeEvent(self, event: QCloseEvent):

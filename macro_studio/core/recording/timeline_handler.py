@@ -29,7 +29,7 @@ M_FUNCTION_TO_PYDIRECTINPUT = {
     MouseFunction.SCROLL_DOWN.name: -1,  # Negative integers scroll down
 }
 
-@dataclass
+@dataclass(eq=False)
 class TimelineStep:
     action_type: ActionType
     value: object = None
