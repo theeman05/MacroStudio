@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING, List
 from macro_studio.core.types_and_enums import LogLevel
 from macro_studio.core.utils import global_logger
 from macro_studio.core.execution.pause_state import PauseState
+from macro_studio.core.controllers.task_controller import TaskController, TaskState
 
 if TYPE_CHECKING:
-    from macro_studio.core.controllers.task_controller import TaskController
     from macro_studio.core.execution.engine import MacroStudio
 
 
@@ -22,7 +22,7 @@ def _handleTasksOnHard(controller: "TaskController", notified_tasks: set):
     if not controller.isInterrupted():
         # Throw if not in notified already
         return was_in_notified or controller.throwInterruptedError(True)
-    return False
+    return controller.isAlive()
 
 class TaskWorker(QThread):
     finished_signal = Signal()
@@ -37,16 +37,16 @@ class TaskWorker(QThread):
 
         self._mutex = QMutex()
         self._task_heap = []
-        self._paused_tasks = set()
+        self._paused_tasks: set[TaskController] = set()
 
-    def _unsafePushController(self, controller: "TaskController", wake_time, cid, generation):
+    def _unsafePushController(self, controller: TaskController, wake_time, cid, generation):
         """
         Pushes a controller to the task heap. Assumes we're locked already and the worker is active.
         If wake_time is None, replaces the remaining variables.
         """
         heapq.heappush(self._task_heap, (wake_time, cid, generation, controller))
 
-    def reloadControllers(self, controllers: List["TaskController"]=None):
+    def reloadControllers(self, controllers: List[TaskController]=None):
         """
         Replaces the entire task list in one go.
         Args:
@@ -62,61 +62,77 @@ class TaskWorker(QThread):
             else:
                 # Cleanup previous tasks that were going to run because we're stopping
                 for entry in prev_heap:
-                    entry[3].stop()
+                    entry[3].stop(True)
 
-    def moveToActiveAndReschedule(self, controller: "TaskController", sort_key):
+    def moveToActiveAndReschedule(self, controller: TaskController, sort_key):
         """Wakes a controller up and puts it back in the schedule."""
         with QMutexLocker(self._mutex):
-            if controller in self._paused_tasks:
-                self._paused_tasks.remove(controller)
-
+            if not self.is_alive: return
             # Schedule only if we're not paused
-            if not self.pause_state.active and sort_key:
+            if not self.pause_state.active:
+                self._paused_tasks.discard(controller)
                 self._unsafePushController(controller, *sort_key)
+            else:
+                # If we're paused, add it to paused list so it will fire up when we resume
+                self._paused_tasks.add(controller)
 
-    def _unsafeMoveToPaused(self, controller: "TaskController"):
+    def _unsafeMoveToPaused(self, controller: TaskController):
         """Moves the controller to paused task list if it's not already there. Assumes we're locked already."""
         if not controller in self._paused_tasks:
             self._paused_tasks.add(controller)
 
+    def _handleInterruptedEnd(self):
+        # If our pause state is hard before stopping, we need to send our exception to all
+        # tasks that were going to run, or aren't hard paused already.
+        notified_tasks = set()
+        forcefully_stopped = set()
+        stopped_all = False
+        with QMutexLocker(self._mutex):
+            # Snapshot the collections to protect if a task removes itself from the list/set during the 'throw'
+            active_snapshot = list(self._task_heap)
+            paused_snapshot = list(self._paused_tasks)
+            self._task_heap.clear()  # Clear task heap because hard pause means things resume at their next cycle
+            # Controllers in the active snapshot should be added to paused and handled
+            for entry in active_snapshot:
+                controller = entry[3]
+                # Only add to paused when hard pausing successful
+                if _handleTasksOnHard(controller, notified_tasks):
+                    self._paused_tasks.add(controller)
+                else:
+                    forcefully_stopped.add(controller)
+
+            # All tasks must have been stopped when hard stopping
+            if not self._paused_tasks:
+                stopped_all = True
+
+        if not stopped_all:
+            # Handle previously paused tasks
+            for controller in paused_snapshot:
+                _handleTasksOnHard(controller, notified_tasks)
+
+            # Log any forcefully stopped tasks
+            for controller in forcefully_stopped:
+                self.logControllerAborted(controller)
+        else:
+            self.is_alive = False
+            self.pause_state.clear()
+            global_logger.log("System terminated all active tasks during interrupting pause.", level=LogLevel.WARN)
+
+    def handleStoppedEnd(self):
+        with QMutexLocker(self._mutex):
+            paused_snapshot = list(self._paused_tasks)
+            self._task_heap.clear()
+            self._paused_tasks.clear()
+
+        for controller in paused_snapshot:
+            controller.stop(by_worker=True)
+
     def _onRunEnd(self):
-        # Handle when run loop ends due to pausing or stopping.
+        # Handle when run loop ends
         if self.pause_state.interrupted:
-            # If our pause state is hard before stopping, we need to send our exception to all
-            # tasks that were going to run, or aren't hard paused already.
-            notified_tasks = set()
-            forcefully_stopped = set()
-            stopped_all = False
-            with QMutexLocker(self._mutex):
-                # Snapshot the collections to protect if a task removes itself from the list/set during the 'throw'
-                active_snapshot = list(self._task_heap)
-                paused_snapshot = list(self._paused_tasks)
-                self._task_heap.clear() # Clear task heap because hard pause means things resume at their next cycle
-                # Controllers in the active snapshot should be added to paused and handled
-                for entry in active_snapshot:
-                    controller = entry[3]
-                    # Only add to paused when hard pausing successful
-                    if _handleTasksOnHard(controller, notified_tasks):
-                        self._paused_tasks.add(controller)
-                    else:
-                        forcefully_stopped.add(controller)
-
-                # All tasks must have been stopped when hard stopping
-                if not self._paused_tasks:
-                    stopped_all = True
-
-            if not stopped_all:
-                # Handle previously paused tasks
-                for controller in paused_snapshot:
-                    _handleTasksOnHard(controller, notified_tasks)
-
-                # Log any forcefully stopped tasks
-                for controller in forcefully_stopped:
-                    self.logControllerAborted(controller)
-            else:
-                self.is_alive = False
-                self.pause_state.clear()
-                global_logger.log("System terminated all active tasks during interrupting pause.", level=LogLevel.WARN)
+            self._handleInterruptedEnd()
+        elif not self.is_alive:
+            self.handleStoppedEnd()
 
     def run(self):
         completed = False
@@ -147,6 +163,20 @@ class TaskWorker(QThread):
                         # WAIT: Calculate dynamic delay
                         delay_sec = wake_time - current_time
                         delay_ms = int(max(1, min(delay_sec * 1000, 50)))
+                elif self._paused_tasks:
+                    # Garbage Collection: Find tasks that were STOPPED by the user while paused
+                    dead_tasks = [c for c in self._paused_tasks if not c.isPaused()]
+
+                    for dead_task in dead_tasks:
+                        self._paused_tasks.remove(dead_task)
+
+                    # Lifecycle Check: Are there STILL valid paused tasks waiting?
+                    if self._paused_tasks:
+                        # DO NOT EXIT! Just sleep and wait for the UI to call resume()
+                        delay_ms = 50
+                    else:
+                        # The heap is empty AND the paused set is empty.
+                        completed = True
                 else:
                     completed = True
 
@@ -170,14 +200,13 @@ class TaskWorker(QThread):
                         self._unsafePushController(controller, wake_time=new_wake_time, cid=cid, generation=generation)
                 except StopIteration:
                     # Controller completed all steps
-                    if controller.auto_loop:
+                    if controller.repeat:
                         # Throttle controller by adding slight delay before restarting
                         controller.restart(time.perf_counter() + self.loop_delay)
                     else:
-                        controller.stop()
-                        global_logger.log(f'Task "{controller.getName()}" finished.')
+                        controller.stop(state=TaskState.FINISHED)
                 except Exception as e:
-                    controller.stop()
+                    controller.stop(state=TaskState.CRASHED)
                     controller.logError(f"{str(e)}")
             else:
                 self.msleep(delay_ms)

@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
 from PySide6.QtCore import Qt, QPoint, QEvent, Signal
 from PySide6.QtGui import QCursor
 
-from macro_studio.ui.shared import HoverButton, createIconLabel, SELECTED_COLOR
+from macro_studio.ui.shared import HoverButton, createIconLabel, IconColor
 
 if TYPE_CHECKING:
     from macro_studio.core.data import TaskStore
@@ -53,7 +53,7 @@ class TaskRowWidget(QWidget):
 
     def enterEvent(self, event):
         self.dots_btn.show()
-        self.setStyleSheet(f"color: {SELECTED_COLOR};")
+        self.setStyleSheet(f"color: {IconColor.SELECTED};")
         super().enterEvent(event)
 
     def leaveEvent(self, event):
@@ -356,14 +356,7 @@ class TaskHeaderWidget(QWidget):
         self.btn_new.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_new.clicked.connect(self.onAdd)
         layout.addWidget(self.btn_new)
-
         layout.addStretch()
-
-        self.chk_loop = QCheckBox("Auto Loop")
-        self.chk_loop.setToolTip("Automatically restart the task when it finishes.")
-        self.chk_loop.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.chk_loop.clicked.connect(self.toggleAutoLoop)
-        layout.addWidget(self.chk_loop)
 
         self.updateTaskDisplay()
 
@@ -374,9 +367,6 @@ class TaskHeaderWidget(QWidget):
             return True
 
         return super().eventFilter(source, event)
-
-    def toggleAutoLoop(self, checked: bool):
-        self.tasks.setActiveLoopStatus(checked)
 
     def setModified(self, modified: bool):
         self.has_changes = modified
@@ -429,8 +419,7 @@ class TaskHeaderWidget(QWidget):
 
     def updateTaskDisplay(self):
         active_task = self.tasks.getActiveTask()
-        self.chk_loop.setChecked(active_task.auto_loop if active_task else False)
-        self.btn_task.setText(active_task.name if active_task else "New Task")
+        self.btn_task.setText(f'"{active_task.name if active_task else "New Task"}"')
         self.has_changes = False # Reset changes on new task load
 
     def toggleSelectorPopup(self, show=None):

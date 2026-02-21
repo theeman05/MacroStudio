@@ -12,11 +12,14 @@ if TYPE_CHECKING:
 
 
 class TaskState(Enum):
-    RUNNING = auto()       # Actively executing or waiting for a wake cycle
-    PAUSED = auto()        # Soft paused (frozen in place, retaining local variables)
-    INTERRUPTED = auto()   # Hard paused (generator destroyed, waiting for respawn)
-    STOPPED = auto()
+    RUNNING = auto()        # Actively executing or waiting for a wake cycle
+    PAUSED = auto()         # Soft paused (frozen in place, retaining local variables)
+    INTERRUPTED = auto()    # Successful hard paused (waiting for resume)
+    STOPPED = auto()        # Manual kill by the user
+    FINISHED = auto()       # Natural successful completion
+    CRASHED = auto()        # Died from an unhandled exception
 
+DEAD_STATES = (TaskState.STOPPED, TaskState.FINISHED, TaskState.CRASHED)
 
 class TaskController:
     def __init__(
@@ -24,23 +27,23 @@ class TaskController:
             worker: "TaskWorker",
             task_func,
             task_id: int,
-            auto_loop=False,
+            repeat=False,
             unique_name: str | int = None,
             is_enabled=True,
             task_args: tuple = (),  # Default to empty tuple
             task_kwargs: dict = None  # Default to None for mutable safety
     ):
         self.func = task_func
-        self.auto_loop = auto_loop
+        self.repeat = repeat
         self.state_change_by_worker = False
         self.context = self._createContext()
+        self.worker = worker
 
         self._state = TaskState.RUNNING if is_enabled else TaskState.STOPPED
         self._pause_timestamp = 0.0
         self._wake_time = 0.0
         self._is_enabled = is_enabled
         self._mutex = QMutex()
-        self._worker = worker
         self._id = task_id
         self._name = unique_name or task_id
         self._generator: Generator | None = None
@@ -72,6 +75,9 @@ class TaskController:
     def getName(self):
         return self._name
 
+    def getState(self):
+        return self._state
+
     def setEnabled(self, enabled: bool):
         if self._is_enabled == enabled: return
         self._is_enabled = enabled
@@ -84,7 +90,7 @@ class TaskController:
         return self._is_enabled
 
     def isAlive(self):
-        return self._state != TaskState.STOPPED
+        return self._generator is not None and self._state not in DEAD_STATES
 
     def isPaused(self):
         return self._state in (TaskState.PAUSED, TaskState.INTERRUPTED)
@@ -100,7 +106,7 @@ class TaskController:
         self._wake_time = wake_time or 0
         self._state = new_state
         self.state_change_by_worker = False
-        self._generator = self._tryWrapFunc(*self._getArgsAndKwargs(self.func)) if new_state != TaskState.STOPPED else None
+        self._generator = self._tryWrapFunc(*self._getArgsAndKwargs(self.func)) if new_state not in DEAD_STATES else None
 
     def throwInterruptedError(self, by_worker=False):
         """
@@ -111,13 +117,12 @@ class TaskController:
         with QMutexLocker(self._mutex):
             if not self._generator: return False
             try:
+                self._state = TaskState.INTERRUPTED
                 self._generator.throw(TaskInterruptedException)
             except (StopIteration, TaskInterruptedException):
                 # If there's nothing left in our generator, the interrupt was not handled correctly
-                new_state = TaskState.INTERRUPTED if self.auto_loop else TaskState.STOPPED
-                self._unsafeResetGenerator(new_state=new_state)
-                self.state_change_by_worker = by_worker
-
+                self._unsafeResetGenerator(new_state=TaskState.CRASHED)
+            self.state_change_by_worker = by_worker
         return self.isAlive()
 
     def _unsafeGetSortKey(self):
@@ -168,8 +173,9 @@ class TaskController:
 
             return self._unsafeGetSortKey()
 
-    def stop(self):
-        self.resetGeneratorAndGetSortKey(TaskState.STOPPED)
+    def stop(self, by_worker=False, state=TaskState.STOPPED):
+        self.resetGeneratorAndGetSortKey(state)
+        self.state_change_by_worker = by_worker
 
     def restart(self, wake_time: float=None):
         """
@@ -177,7 +183,7 @@ class TaskController:
         Args:
             wake_time: The wake time for the task to run at after restarting.
         """
-        self._worker.moveToActiveAndReschedule(self, self.resetGeneratorAndGetSortKey(wake_time=wake_time))
+        self.worker.moveToActiveAndReschedule(self, self.resetGeneratorAndGetSortKey(wake_time=wake_time))
 
     def pause(self, interrupt=False):
         """Halts the task and shifts its internal state."""
@@ -195,7 +201,7 @@ class TaskController:
         if not interrupt or self.throwInterruptedError():
             return True
 
-        self._worker.logControllerAborted(self)
+        self.worker.logControllerAborted(self)
         return False
 
     def resume(self):
@@ -203,7 +209,7 @@ class TaskController:
         was_hard_pause = self.isInterrupted()
 
         elapsed = None
-        if self._worker.is_alive and self.isPaused():
+        if self.worker.is_alive and self.isPaused():
             elapsed = time.perf_counter() - self._pause_timestamp
 
         self._state = TaskState.RUNNING
@@ -214,7 +220,7 @@ class TaskController:
             with QMutexLocker(self._mutex):
                 self._generation += 1
                 self._wake_time = 0 if was_hard_pause else (self._wake_time + elapsed)
-                self._worker.moveToActiveAndReschedule(self, self._unsafeGetSortKey())
+                self.worker.moveToActiveAndReschedule(self, self._unsafeGetSortKey())
 
         return elapsed
 
@@ -238,11 +244,11 @@ class TaskController:
     def log(self, *args, level: LogLevel=LogLevel.INFO):
         global_logger.log(*args, level=level, task_name=self._name)
 
-    def logError(self, error_msg, trace=""):
-        global_logger.logError(error_msg, trace, self._name)
+    def logError(self, error_msg, include_trace=True):
+        global_logger.logError(error_msg, include_trace, self._name)
 
     def getVar(self, key: Hashable):
-        return self._worker.engine.getVar(key)
+        return self.worker.engine.getVar(key)
 
     def setScheduler(self, scheduler: "TaskWorker"):
         """
@@ -251,7 +257,7 @@ class TaskController:
             scheduler: The new scheduler to assign to this controller.
         """
         assert scheduler is not None
-        self._worker = scheduler
+        self.worker = scheduler
         self._mutex = QMutex()
         prev_gen = self._generator
         if prev_gen:

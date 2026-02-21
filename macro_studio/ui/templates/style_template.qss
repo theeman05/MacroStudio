@@ -281,3 +281,13 @@ TextFunctionDialog {
     border: 1px solid $border_color;
     border-radius: 4px;
 }
+
+QLabel#pill_style {
+    background-color: $bg_secondary;
+    color: $text_primary;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 9px;
+    font-weight: bold;
+    letter-spacing: 1px;
+}

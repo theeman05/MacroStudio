@@ -48,9 +48,11 @@ class ManualTaskWrapper:
         self.step_idx = 0
         self.inputs_pending_release = set() # Set of inputs that had a partner
         self.active_solo_inputs = set() # Set of inputs to release upon task completion without partners
+        self.model = model
         self.updateModel(model)
 
     def updateModel(self, model: "TaskModel"):
+        self.model = model
         self.steps.clear()
         for raw_step in model.steps:
             step = TimelineStep.fromDict(raw_step)
@@ -79,9 +81,9 @@ class ManualTaskWrapper:
             x, y = self._getMousePos(m_pos)
 
             if isinstance(m_btn, int):
-                pydirectinput.scroll(120 * m_btn, x=x, y=y)
+                pydirectinput.scroll(clicks=120 * m_btn, x=x, y=y)
             else:
-                pydirectinput.mouseDown(m_btn, x=x, y=y)
+                pydirectinput.mouseDown(x=x, y=y, button=m_btn)
         else:
             pydirectinput.keyDown(step_value)
 
@@ -89,7 +91,7 @@ class ManualTaskWrapper:
         if isinstance(step_value, tuple):
             m_btn, m_pos = step_value
             x, y = self._getMousePos(m_pos)
-            pydirectinput.mouseUp(m_btn, x=x, y=y, duration=0.001)
+            pydirectinput.mouseUp(x=x, y=y, button=m_btn, duration=0.001)
         else:
             pydirectinput.keyUp(step_value)
 
@@ -106,17 +108,18 @@ class ManualTaskWrapper:
 
     def _processStep(self, step):
         if step.value is None: return
+        step_val = step.value
 
         if _isScroll(step):
-            self._pressKeyOrBtn(step.value)
+            self._pressKeyOrBtn(step_val)
         elif _isPress(step):
             self._addToSoloOrPending(step, self.active_solo_inputs, self.inputs_pending_release)
-            self._pressKeyOrBtn(step.value)
+            self._pressKeyOrBtn(step_val)
         elif _isRelease(step):
             if self._shouldReleaseStep(step):
-                self.inputs_pending_release.discard(step)
-                self.active_solo_inputs.discard(step)
-                self._releaseKeyOrBtn(step.value)
+                self.inputs_pending_release.discard(step_val)
+                self.active_solo_inputs.discard(step_val)
+                self._releaseKeyOrBtn(step_val)
 
     def _releasePendingInputs(self, release_solo=False):
         for step_val in self.inputs_pending_release:
