@@ -29,6 +29,7 @@ class TaskStore(BaseStore):
     taskAdded = Signal(TaskModel)
     taskRemoved = Signal(str) # (task name)
     taskSaved = Signal(TaskModel)
+    taskRenamed = Signal(str, str) # (old name, new name)
 
     def __init__(self):
         super().__init__("tasks")
@@ -68,6 +69,12 @@ class TaskStore(BaseStore):
             self.setActiveTask(new_idx)
 
         return task
+
+    def updateTaskName(self, task, new_name):
+        old_name = task.name
+        if old_name != new_name:
+            task.name = new_name
+            self.taskRenamed.emit(old_name, new_name)
 
     def _silentCreateTask(self, task):
         self._active_idx = 0  # Silently set the task so we don't reload anything

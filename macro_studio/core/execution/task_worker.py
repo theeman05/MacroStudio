@@ -244,4 +244,4 @@ class TaskWorker(QThread):
 
     @staticmethod
     def logControllerAborted(controller: "TaskController"):
-        global_logger.log(f"Task {controller.getName()} aborted via unhandled Hard Stop.", level=LogLevel.WARN)
+        global_logger.log(f"Task {controller.name} aborted via unhandled Hard Stop.", level=LogLevel.WARN)

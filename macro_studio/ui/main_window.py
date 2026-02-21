@@ -1,11 +1,12 @@
+import signal
 import uuid, sys
 from datetime import datetime
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QLabel, QTabWidget, QDockWidget, QStatusBar, QProgressBar, QPushButton,
     QVBoxLayout, QWidget, QHBoxLayout, QFrame
 )
-from PySide6.QtGui import QCloseEvent
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QCloseEvent, QFont
+from PySide6.QtCore import Qt, Signal, QTimer
 from pynput import keyboard
 
 from macro_studio.core.types_and_enums import LogPacket, LogLevel, LogErrorPacket
@@ -30,6 +31,12 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"Macro Studio v1.6")
         self.resize(900, 700)
         self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint)
+
+        global_font = QFont("Segoe UI", 10)
+        global_font.setStyleHint(QFont.StyleHint.SansSerif)
+        global_font.setWeight(QFont.Weight.Medium)
+
+        self.app.setFont(global_font)
 
         self.profile = profile
         self.running = False
@@ -61,7 +68,13 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.recorder_tab, "Recorder")
         self.main_layout.addWidget(self.tabs)
 
+        # Needed for interrrupted close
+        timer_breathe = QTimer()
+        timer_breathe.timeout.connect(lambda: None)
+        timer_breathe.start(500)
+
         # 5. Connections
+        signal.signal(signal.SIGINT, self._handleInterrupt)
         global_logger.log_emitted.connect(self.log)
         self.tabs.currentChanged.connect(self._onTabChanged)
         self.hotkey_signal.connect(self._onHotkey)
@@ -72,6 +85,10 @@ class MainWindow(QMainWindow):
         })
         self.listener.start()
         self._onTabChanged(0)
+
+    def _handleInterrupt(self, signum, frame):  # camelCase method [cite: 2026-02-17]
+        self.stop_signal.emit(True)
+        QApplication.instance().quit()
 
     def _onTabChanged(self, index):
         min_size = getattr(self.tabs.widget(index), 'MIN_SIZE', None)

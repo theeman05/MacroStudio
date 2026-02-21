@@ -42,7 +42,7 @@ class TaskContext:
 
     # --- Methods ---
     def getName(self):
-        return self._controller.getName()
+        return self._controller.name
 
     def setEnabled(self, enabled: bool):
         self._controller.setEnabled(enabled)

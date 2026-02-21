@@ -1,6 +1,8 @@
 import sys
 from typing import Hashable
 
+from PySide6.QtCore import QTimer
+
 from macro_studio.core.types_and_enums import TaskFunc, LogLevel, CaptureMode
 from macro_studio.core.data import Profile
 from macro_studio.core.utils import global_logger

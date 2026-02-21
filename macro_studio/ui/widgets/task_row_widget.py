@@ -39,23 +39,15 @@ class TaskRowWidget(QFrame):
     def __init__(self, controller: "TaskController"):
         super().__init__()
         self.controller = controller
+        self.prev_name = None
 
         self.setObjectName("TaskCard")
-        self.setStyleSheet("""
-            QFrame#TaskCard {
-                background-color: #2b2b2b;
-                border-radius: 8px;
-                margin: 2px 4px;
-            }
-            QLabel { color: #e0e0e0; font-family: 'Segoe UI', sans-serif; }
-        """)
 
         # Left Zone: Identity
         self.lbl_status_dot = CircularStatusLabel()
         self.btn_toggle = ToggleHoverButton("ph.circle-dashed-bold", "ph.circle-bold", normal_tooltip="Enable Task", checked_tooltip="Disable Task", size=28)
 
-        name=controller.getName()
-        self.lbl_name = QLabel("Task " + (f'"{name}"' if isinstance(name, str) else str(name)))
+        self.lbl_name = QLabel()
         self.lbl_name.setStyleSheet("font-weight: bold; font-size: 14px;")
         self.lbl_state_text = QLabel()
         self.lbl_state_text.setStyleSheet("color: #888888; font-size: 11px;")
@@ -205,6 +197,11 @@ class TaskRowWidget(QFrame):
             state_color = "#4caf50"
 
         if is_enabled: self.lbl_status_dot.updateColor(state_color)
+
+        name = self.controller.name
+        if name != self.prev_name:
+            self.prev_name = name
+            self.lbl_name.setText("Task " + (f'"{name}"' if isinstance(name, str) else str(name)))
 
         self.lbl_state_text.setText(display_text)
         self.btn_loop.setChecked(self.controller.repeat)
