@@ -65,6 +65,7 @@ class TaskManager(QObject):
         tasks.taskAdded.connect(self._onManualTaskAdded)
         tasks.taskRemoved.connect(self._onManualTaskRemoved)
         tasks.taskSaved.connect(self._onManualTaskSaved)
+        tasks.taskRenamed.connect(self._onManualTaskRenamed)
         self.watchdog_timer.timeout.connect(self._checkWorkerHealth)
 
         self._onProfileLoaded()
@@ -193,7 +194,7 @@ class TaskManager(QObject):
 
     def _registerController(self, controller: TaskController):
         self.next_cid += 1
-        self.controllers[controller.getName()] = controller
+        self.controllers[controller.name] = controller
 
     def _onManualTaskAdded(self, task_model: "TaskModel"):
         self._registerController(ManualTaskController(self.worker, self.profile.vars, task_model, self.next_cid))
@@ -212,3 +213,14 @@ class TaskManager(QObject):
             print(f"Warning: Tried to save '{task_model.name}', but no controller was found in the registry.")
         else:
             print(f"Warning: '{task_model.name}' is a {type(controller).__name__}, not a ManualTaskController.")
+
+    def _onManualTaskRenamed(self, old_name, new_name):
+        controller = self.controllers.get(old_name)
+        if isinstance(controller, ManualTaskController):
+            del self.controllers[controller.name]
+            controller.name = new_name
+            self.controllers[new_name] = controller
+        elif controller is None:
+            print(f"Warning: Tried to update name of '{old_name}', but no controller was found in the registry.")
+        else:
+            print(f"Warning: '{old_name}' is a {type(controller).__name__}, not a ManualTaskController.")

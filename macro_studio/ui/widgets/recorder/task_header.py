@@ -244,7 +244,7 @@ class TaskSelectorPopup(QDialog):
             if not task_match:
                 return False, "Original task not found"
 
-            task_match.name = new_name
+            self.tasks.updateTaskName(task_match, new_name)
 
         # Update Parent Header (if it was selected)
         if task_match == self.tasks.getActiveTask():
@@ -514,8 +514,7 @@ class TaskHeaderWidget(QWidget):
             self.tasks.createTask(new_name, set_as_active=True)
             self.updateTaskDisplay()
         else:
-            active_task.name = new_name
-
+            self.tasks.updateTaskName(active_task, new_name)
             if self.has_changes:
                 self.btn_task.setText(new_name + "*")
             else:

@@ -54,9 +54,7 @@ class ThemeManager:
         "progress_paused": "#FFEB3B",  # Yellow
 
         # --- Table Widget ---
-        "table_grid": "#333333",
-        "header_bg": "#333333",
-        "header_border": "#1e1e1e",
+        "header_bg": "#242633",
         "header_text": "#cccccc",
 
         # --- Console ---
@@ -110,9 +108,7 @@ class ThemeManager:
         "progress_paused": "#f57c00",  # Orange (Yellow is too hard to see on white)
 
         # --- Table Widget ---
-        "table_grid": "#e0e0e0",
         "header_bg": "#e1e1e1",
-        "header_border": "#d0d0d0",
         "header_text": "#000000",
 
         # --- Console ---

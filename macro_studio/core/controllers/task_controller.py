@@ -38,6 +38,7 @@ class TaskController:
         self.state_change_by_worker = False
         self.context = self._createContext()
         self.worker = worker
+        self.name = unique_name or task_id
 
         self._state = TaskState.RUNNING if is_enabled else TaskState.STOPPED
         self._pause_timestamp = 0.0
@@ -45,7 +46,6 @@ class TaskController:
         self._is_enabled = is_enabled
         self._mutex = QMutex()
         self._id = task_id
-        self._name = unique_name or task_id
         self._generator: Generator | None = None
         self._generation = 0
         self._task_args = task_args
@@ -71,9 +71,6 @@ class TaskController:
     @property
     def cid(self):
         return self._id
-
-    def getName(self):
-        return self._name
 
     def getState(self):
         return self._state
@@ -242,10 +239,10 @@ class TaskController:
             return self._wake_time, self._id, self._generation
 
     def log(self, *args, level: LogLevel=LogLevel.INFO):
-        global_logger.log(*args, level=level, task_name=self._name)
+        global_logger.log(*args, level=level, task_name=self.name)
 
     def logError(self, error_msg, include_trace=True):
-        global_logger.logError(error_msg, include_trace, self._name)
+        global_logger.logError(error_msg, include_trace, self.name)
 
     def getVar(self, key: Hashable):
         return self.worker.engine.getVar(key)
@@ -265,7 +262,7 @@ class TaskController:
             try:
                 prev_gen.close()
             except ValueError:
-                global_logger.log(f"Task '{self.getName()}' caused a thread deadlock. Execution aborted without safe cleanup.", level=LogLevel.ERROR, task_name=-1)
+                global_logger.log(f"Task '{self.name}' caused a thread deadlock. Execution aborted without safe cleanup.", level=LogLevel.ERROR, task_name=-1)
             del prev_gen
         self._generation = -1
         self.stop()

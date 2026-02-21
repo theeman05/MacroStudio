@@ -110,19 +110,44 @@ QProgressBar[state="paused"]::chunk {
 }
 
 /* --- Table (Setup Steps) --- */
-QTableWidget {
-    background-color: $bg_secondary;
+QTableView {
+    background-color: $alt_bg;
+    alternate-background-color: $bg_primary;
     border: 1px solid $border_color;
-    gridline-color: $table_grid;
-    selection-background-color: $selection_color;
+    border-radius: 8px;
+    outline: none;
     color: $text_primary;
 }
+
+/* 2. The Internal Viewport */
+QTableView::item {
+    border-bottom: 1px solid $header_bg;
+    padding: 4px;
+    selection-color: $text_light;
+}
+
+/* 3. The Top Header Container */
+QHeaderView {
+    background-color: transparent;
+    border: none;
+}
+
+/* 4. The Individual Header Columns */
 QHeaderView::section {
     background-color: $header_bg;
-    padding: 4px;
-    border: 1px solid $header_border;
-    color: $header_text;
     font-weight: bold;
+    color: #ffffff;
+    padding: 6px;
+    border: none;
+    border-bottom: 2px solid $selected_color;
+}
+
+QHeaderView::section:first {
+    border-top-left-radius: 7px; /* 1px smaller than main border to fit perfectly inside */
+}
+
+QHeaderView::section:last {
+    border-top-right-radius: 7px;
 }
 
 /* --- Console/Logs --- */
@@ -143,6 +168,11 @@ QListWidget {
     background-color: $alt_bg;
     border: 1px solid $alt_bg;
     border-radius: 4px;
+}
+
+#list_container {
+    background-color: $alt_bg;
+    border-radius: 8px;
 }
 
 DraggableListWidget::item{
@@ -290,4 +320,10 @@ QLabel#pill_style {
     font-size: 9px;
     font-weight: bold;
     letter-spacing: 1px;
+}
+
+QFrame#TaskCard {
+    background-color: $bg_primary;
+    border-radius: 8px;
+    margin: 2px 4px;
 }

@@ -46,6 +46,8 @@ class VariablesTab(QWidget):
         self.model = VariableTableModel(var_store)
         self.table_view.setModel(self.model)
 
+        self.table_view.setAlternatingRowColors(True)
+        self.table_view.setShowGrid(False)
         header = self.table_view.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)

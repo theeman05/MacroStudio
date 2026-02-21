@@ -9,52 +9,48 @@ class TaskManagerTab(QWidget):
         super().__init__()
         self.manager = manager
 
-        # 1. Setup UI Layouts
         self.main_layout = QVBoxLayout(self)
         self.scroll_area = QScrollArea()
+
         self.scroll_area.setWidgetResizable(True)
+
         self.scroll_widget = QWidget()
+        self.scroll_widget.setObjectName("list_container")
+
         self.tasks_layout = QVBoxLayout(self.scroll_widget)
-        self.tasks_layout.addStretch()  # Pushes all rows to the top
+        self.tasks_layout.setContentsMargins(5, 5, 5, 5)
+        self.tasks_layout.addStretch()
+
         self.scroll_area.setWidget(self.scroll_widget)
         self.main_layout.addWidget(self.scroll_area)
 
-        # 2. State Dictionary
-        # Maps the unique task key (str | int) to its TaskRowWidget instance
         self.task_rows = {}
 
-        # 3. The Polling Manager
         self.update_timer = QTimer(self)
         self.update_timer.timeout.connect(self.refreshUi)
         self.update_timer.start(100)  # 10 FPS UI updates
 
     def refreshUi(self):
-        try:
-            # Fetch the live dictionary directly from the manager
-            active_controllers = self.manager.controllers
+        # Fetch the live dictionary directly from the manager
+        active_controllers = self.manager.controllers
 
-            # Step 1: Add new rows for any newly registered controllers
-            for task_key, controller in active_controllers.items():
-                if task_key not in self.task_rows:
-                    new_row = TaskRowWidget(controller)
-                    # Insert right above the stretch space at the bottom
-                    self.tasks_layout.insertWidget(self.tasks_layout.count() - 1, new_row)
-                    self.task_rows[task_key] = new_row
+        for task_key, controller in active_controllers.items():
+            if task_key not in self.task_rows:
+                new_row = TaskRowWidget(controller)
+                # Insert right above the stretch space at the bottom
+                self.tasks_layout.insertWidget(self.tasks_layout.count() - 1, new_row)
+                self.task_rows[task_key] = new_row
 
-            # Step 2: Update existing rows and purge deleted ones
-            stale_keys = []
-            for task_key, row_widget in self.task_rows.items():
-                if task_key not in active_controllers:
-                    # The task was removed from the engine. Destroy the UI row.
-                    row_widget.setParent(None)
-                    row_widget.deleteLater()
-                    stale_keys.append(task_key)
-                else:
-                    # The task still exists. Trigger its color/button update!
-                    row_widget.updateUi()
+        stale_keys = []
+        for task_key, row_widget in self.task_rows.items():
+            if task_key not in active_controllers:
+                # The task was removed from the engine. Destroy the UI row.
+                row_widget.setParent(None)
+                row_widget.deleteLater()
+                stale_keys.append(task_key)
+            else:
+                # The task still exists. Trigger its color/button update!
+                row_widget.updateUi()
 
-            # Step 3: Clean up the UI dictionary memory
-            for key in stale_keys:
-                del self.task_rows[key]
-        except KeyboardInterrupt:
-            pass
+        for key in stale_keys:
+            del self.task_rows[key]
