@@ -263,7 +263,7 @@ class TaskSelectorPopup(QDialog):
             popped_task = self.tasks.popTask(active_idx)
             if popped_task:
                 self.scroll_layout.removeWidget(self.rows_list.pop(active_idx))
-                if active_idx.name == task_name:
+                if popped_task.name == task_name:
                     self.parent_header.updateTaskDisplay()
 
     def refreshView(self):

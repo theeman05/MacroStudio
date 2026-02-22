@@ -327,3 +327,9 @@ QFrame#TaskCard {
     border-radius: 8px;
     margin: 2px 4px;
 }
+
+QFrame#FormCard {
+    background-color: $bg_primary;
+    border-radius: 8px;
+    border: 1px solid $border_color;
+}

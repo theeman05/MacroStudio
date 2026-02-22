@@ -56,7 +56,7 @@ class VariableTableModel(QAbstractTableModel):
                     return QBrush(QColor("#FFCDD2"))
             case Qt.ItemDataRole.ForegroundRole:
                 if index.column() == 1 and GlobalCaptureRegistry.containsType(config.data_type):
-                    return QBrush(QColor(IconColor.SELECTED))
+                    return QBrush(QColor(IconColor.SELECTED_HOVER))
                 elif index.column() == 2 and config.value is None:
                     return QBrush(QColor("gray"))
             case Qt.ItemDataRole.DisplayRole:
@@ -81,7 +81,7 @@ class VariableTableModel(QAbstractTableModel):
                     capture_mode = GlobalCaptureRegistry.getModeFromType(config.data_type)
                     if capture_mode:
                         return f"{GlobalCaptureRegistry.get(capture_mode).tip} | Right click to capture"
-                    return config.hint or "Manually edit this value."
+                    return config.hint or "Manually edit this value"
 
         return None
 
@@ -122,7 +122,7 @@ class VariableTableModel(QAbstractTableModel):
         config = self.getConfigAtRow(index.row())
 
         # Add other columns here if needed
-        if index.column() == 2:
+        if index.column() == 2 and config:
             if config.data_type is bool:
                 return Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable
             else:
@@ -149,7 +149,10 @@ class VariableTableModel(QAbstractTableModel):
             return None, None
 
         var_name = self._keys_cache[row]
-        config = self.store[var_name]
+        config = self.store.get(var_name)
+        if not config:
+            return None, None
+
         return var_name, config
 
     def getConfigAtRow(self, row: int) -> Union["VariableConfig", None]:

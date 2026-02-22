@@ -121,6 +121,12 @@ class GlobalTypeHandler:
         if not value or (strict_eval and value is None): return
         to_dict[key] = value
 
+    @classmethod
+    def getRegisteredTypes(cls):
+        registered = {t for t in list(cls._registry.keys())}
+        registered.update(DEFAULT_TYPE_CLASS_NAMES.keys())
+        return list(registered)
+
 
 # --- Helper Decorator for easy registration ---
 def _registerClass(cls, target_type = None):
