@@ -51,8 +51,8 @@ class VariablesTab(QWidget):
         special_bar_layout.setContentsMargins(5,5,5,5)
         special_bar_layout.setSpacing(5)
 
-        add_var_btn = HoverButton("ph.plus-circle-fill", tooltip="Create New Variable", size=35)
-        del_var_btn = HoverButton("ph.trash-fill", hover_color="#f44336", tooltip="Delete Selected Variables", size=35)
+        add_var_btn = HoverButton("ph.plus-circle", tooltip="Create New Variable", size=35)
+        del_var_btn = HoverButton("ph.trash", hover_color="#f44336", tooltip="Delete Selected Variables", size=35)
 
         special_bar_layout.addWidget(add_var_btn)
         special_bar_layout.addWidget(del_var_btn)
