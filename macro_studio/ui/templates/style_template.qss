@@ -52,28 +52,6 @@ QPushButton:pressed {
 }
 
 /* --- Specific Button Colors --- */
-QPushButton#btn_start {
-    background-color: $btn_start_bg;
-    border: 1px solid $btn_start_border;
-    font-weight: bold;
-}
-QPushButton#btn_start:hover {
-    background-color: $btn_start_hover;
-}
-
-QPushButton#btn_stop {
-    background-color: $btn_stop_bg;
-    border: 1px solid $btn_stop_border;
-}
-QPushButton#btn_stop:hover {
-    background-color: $btn_stop_hover;
-}
-
-QPushButton#btn_reset {
-    background-color: $btn_reset_bg;
-    border: 1px solid $btn_reset_border;
-}
-
 QPushButton#btn_pick {
     background-color: $btn_pick_bg;
     border: none;
@@ -81,32 +59,6 @@ QPushButton#btn_pick {
 }
 QPushButton#btn_pick:hover {
     background-color: $btn_pick_hover;
-}
-
-/* --- Progress Bar --- */
-QProgressBar {
-    border: 1px solid $progress_border;
-    border-radius: 4px;
-    text-align: center;
-    color: $text_primary;
-}
-QProgressBar::chunk {
-    background-color: $progress_chunk;
-    width: 20px;
-}
-
-/* --- DYNAMIC STATES (Paused) --- */
-QPushButton#btn_start[state="paused"] {
-    background-color: $btn_paused_bg;
-    border: 1px solid $btn_paused_border;
-}
-QPushButton#btn_start[state="paused"]:hover {
-    background-color: $btn_paused_hover;
-    border-color: $btn_paused_border;
-}
-
-QProgressBar[state="paused"]::chunk {
-    background-color: $progress_paused;
 }
 
 /* --- Table (Setup Steps) --- */
@@ -157,6 +109,26 @@ QTextEdit, QTextBrowser {
     color: $console_text;
     font-family: 'Consolas', monospace;
     font-size: 12px;
+}
+
+HoverButton {
+    background-color: transparent;
+    border: none;
+}
+
+HoverButton:hover {
+    background-color: transparent;
+    border: none;
+}
+
+StatefulHoverButton {
+    background-color: transparent;
+    border: none;
+}
+
+StatefulHoverButton:hover {
+    background-color: transparent;
+    border: none;
 }
 
 /* --- Recorder Tab -- */
@@ -216,16 +188,6 @@ QCheckBox::indicator:checked:hover {
 
 TimelineItemWidget QCheckBox::indicator:unchecked {
     background: $alt_bg;
-    border: none;
-}
-
-HoverButton {
-    background-color: transparent;
-    border: none;
-}
-
-HoverButton:hover {
-    background-color: transparent;
     border: none;
 }
 

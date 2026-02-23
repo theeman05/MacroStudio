@@ -11,11 +11,14 @@ The **Python Macro Studio** is a robust automation framework that bridges the ga
 ### ♾️ Infinite Possibilities
 If you can code it in Python, you can automate it. Import any library, use complex logic, and interact with the OS at a deep level. You are not limited to "click here, wait 5 seconds."
 
-### 🎛️ Granular Task Control
-The core of the engine is its **Task Manager**. Unlike standard scripts that run from top to bottom:
-* **Individual Control:** Pause, Stop, or Restart specific tasks without stopping the whole engine.
-* **Hot-Swappable:** Update variables in real-time while the macro is running.
-* **Resilient:** If one task crashes or is stopped, the rest of the engine keeps running.
+### 🎛️ Visual Task Manager
+
+The Visual Task Manager is the central orchestration hub of the studio. It provides a real-time, graphical interface for monitoring and controlling the execution flow of both coded Python tasks and manually recorded macros.
+
+![Task Manager UI](docs/assets/task_manager_ui.png) ### Key Features
+* **Real-Time Polling:** The UI continuously polls the background engine at 10 FPS, providing immediate visual feedback on which task is actively executing.
+* **Strict Source of Truth:** Intelligently handles state conflicts between volatile code and persistent UI. Scripted task states remain session-only to protect code integrity, while manual task configurations (`repeat` toggles) are safely serialized to your JSON profile.
+* **Graceful Teardown:** Built-in OS signal interception ensures that interrupting a task via the UI (or a terminal `Ctrl+C`) gracefully shuts down background threads without crashing the application.
 
 ### 🧩 Variable Management
 Predefine variables (Integers, Booleans, Regions, Points, etc.) that are exposed in the GUI. Users can tweak settings (like `click_point` or `scan_region`) safely via the interface without ever touching the code.
@@ -325,23 +328,6 @@ The engine comes pre-configured with handlers for standard and GUI types:
 * **Python Primitives:** `int`, `float`, `bool`, `str`, `list`, `tuple`
 * **Qt Geometry:** `QRect` (Screen Region), `QPoint` (Coordinate)
 * **Custom Extensions:** Add any class you want using the `@registerHandler` decorator or the type handler's `register` method.
-
----
-
-## 🗺️ Roadmap & Coming Soon
-
-### 🖥️ Visual Task Manager Tab
-While Macro Studio currently uses a global start, stop, and resume button, the next major release will feature a comprehensive task manager tab. This dashboard will provide real-time, granular control over every active thread and generator in the engine.
-
-Features currently in development include:
-
-* **Live State Monitoring:** Watch individual tasks transition between *Running*, *Sleeping*, and *Stopped* in real-time.
-* **Granular Task Controls:**
-  * **Pause & Resume:** Soft-pause individual tasks for logic waits without affecting the rest of the engine.
-  * **Interrupt (Hard Pause):** Force a specific task to halt and run its safety/cleanup blocks immediately.
-  * **Stop:** Gracefully kill a running or sleeping task.
-  * **Restart:** Instantly reboot a stopped or crashed task from the beginning.
-  * **Enable / Disable:** Toggle tasks in and out of the execution queue without deleting their configuration.
 
 ---
 

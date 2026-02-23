@@ -2,9 +2,8 @@ import time, heapq
 from PySide6.QtCore import QThread, QMutex, QMutexLocker, Signal
 from typing import TYPE_CHECKING, List
 
-from macro_studio.core.types_and_enums import LogLevel
+from macro_studio.core.types_and_enums import LogLevel, WorkerState
 from macro_studio.core.utils import global_logger
-from macro_studio.core.execution.pause_state import PauseState
 from macro_studio.core.controllers.task_controller import TaskController, TaskState
 
 if TYPE_CHECKING:
@@ -29,8 +28,7 @@ class TaskWorker(QThread):
 
     def __init__(self, engine: "MacroStudio", loop_delay: float):
         super().__init__()
-        self.pause_state = PauseState()
-        self.is_alive = False
+        self.state = WorkerState.IDLE
         self.engine = engine
         self.loop_delay = loop_delay
         self.last_heartbeat = 0
@@ -38,6 +36,7 @@ class TaskWorker(QThread):
         self._mutex = QMutex()
         self._task_heap = []
         self._paused_tasks: set[TaskController] = set()
+        self._pause_timestamp = 0.0
 
     def _unsafePushController(self, controller: TaskController, wake_time, cid, generation):
         """
@@ -67,9 +66,9 @@ class TaskWorker(QThread):
     def moveToActiveAndReschedule(self, controller: TaskController, sort_key):
         """Wakes a controller up and puts it back in the schedule."""
         with QMutexLocker(self._mutex):
-            if not self.is_alive: return
+            if not self.isAlive(): return
             # Schedule only if we're not paused
-            if not self.pause_state.active:
+            if not self.isPaused():
                 self._paused_tasks.discard(controller)
                 self._unsafePushController(controller, *sort_key)
             else:
@@ -114,9 +113,18 @@ class TaskWorker(QThread):
             for controller in forcefully_stopped:
                 self.logControllerAborted(controller)
         else:
-            self.is_alive = False
-            self.pause_state.clear()
+            self.clearPauseState(WorkerState.IDLE)
             global_logger.log("System terminated all active tasks during interrupting pause.", level=LogLevel.WARN)
+
+    def _handleNormalPausedEnd(self):
+        with QMutexLocker(self._mutex):
+            active_snapshot = list(self._task_heap)
+            self._task_heap.clear()
+
+            for entry in active_snapshot:
+                controller = entry[3]
+                controller.state_change_by_worker = True
+                self._paused_tasks.add(controller)
 
     def handleStoppedEnd(self):
         with QMutexLocker(self._mutex):
@@ -129,14 +137,16 @@ class TaskWorker(QThread):
 
     def _onRunEnd(self):
         # Handle when run loop ends
-        if self.pause_state.interrupted:
+        if self.isInterrupted():
             self._handleInterruptedEnd()
-        elif not self.is_alive:
+        elif not self.isAlive():
             self.handleStoppedEnd()
+        else:
+            self._handleNormalPausedEnd()
 
     def run(self):
         completed = False
-        while self.is_alive and not self.isPaused():
+        while self.isAlive() and not self.isPaused():
             self.last_heartbeat = time.perf_counter()
 
             should_sleep = True
@@ -144,7 +154,7 @@ class TaskWorker(QThread):
 
             with QMutexLocker(self._mutex):
                 task_heap = self._task_heap
-                if not self.is_alive or self.isPaused():
+                if not self.isAlive() or self.isPaused():
                     break
                 if task_heap:
                     current_time = time.perf_counter()
@@ -219,8 +229,8 @@ class TaskWorker(QThread):
         Returns:
             The duration paused for in seconds or ``None`` if not paused.
         """
-        was_hard_pause = self.pause_state.interrupted
-        elapsed = self.pause_state.clear() if (self.is_alive and not self.isRunning()) else None
+        was_hard_pause = self.state == WorkerState.INTERRUPTED
+        elapsed = self.clearPauseState() if not self.isRunning() else None
         if elapsed is not None:
             elapsed_on_soft = elapsed if was_hard_pause is False else None
             with QMutexLocker(self._mutex):
@@ -239,8 +249,42 @@ class TaskWorker(QThread):
         self.start()
         return elapsed
 
+    def isAlive(self):
+        return self.state != WorkerState.IDLE
+
     def isPaused(self):
-        return self.pause_state.active
+        return self.state in (WorkerState.PAUSED, WorkerState.INTERRUPTED)
+
+    def isInterrupted(self):
+        return self.state == WorkerState.INTERRUPTED
+
+    def pause(self, interrupt: bool=False):
+        if not self.isAlive(): return False
+        target_state = WorkerState.INTERRUPTED if interrupt else WorkerState.PAUSED
+        # If it's already interrupted, we don't need to do anything.
+        # But if it's soft PAUSED, and demands an INTERRUPT, we must upgrade it.
+        if self.state == target_state or self.state == WorkerState.INTERRUPTED:
+            return False
+
+        # We are doing interrupted pause now, update state of paused items.
+        if self.state == WorkerState.PAUSED:
+            self._handleInterruptedEnd()
+
+        self.state = target_state
+        self._pause_timestamp = time.perf_counter()
+        return True
+
+    def clearPauseState(self, new_state: WorkerState=WorkerState.RUNNING):
+        """
+        End the pause and return how long it lasted.
+        :return: The duration paused for in seconds or None if not paused.
+        """
+        was_paused = self.isPaused()
+        self.state = new_state
+        if not was_paused: return None
+        duration = time.perf_counter() - self._pause_timestamp
+
+        return duration
 
     @staticmethod
     def logControllerAborted(controller: "TaskController"):

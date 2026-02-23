@@ -1,7 +1,8 @@
+from enum import Enum
 from typing import Union
 import qtawesome as qta
 from PySide6.QtCore import Qt, QSize, QTimer
-from PySide6.QtGui import QBrush, QColor
+from PySide6.QtGui import QBrush, QColor, QIcon
 from PySide6.QtWidgets import QTableWidgetItem, QLineEdit, QWidget, QPushButton, QLabel
 
 EMPTY_VALUE_STR = "<Empty>"
@@ -85,6 +86,82 @@ class ToggleHoverButton(HoverButton):
         self.setIcon(self.icon_checked if self.isChecked() else self.icon_normal)
         QPushButton.leaveEvent(self, event)
 
+
+class StatefulHoverButton(QPushButton):
+    """A button that manages multiple visual states, each with dedicated hover effects."""
+
+    def __init__(self, size=20, parent=None):
+        super().__init__(parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        self.button_size = size
+        self.setIconSize(QSize(size, size))
+        self.setFixedSize(size, size)
+
+        # The core state machine data
+        self.states = {}
+        self.current_state = None
+        self.is_hovered = False
+
+    def addState(self, state_name: str | Enum, icon: QIcon, hover_icon: QIcon=None, tooltip: str = None):
+        """Registers a new state. Automatically falls back to base icon/tooltip if hover variants are missing."""
+        if isinstance(state_name, Enum):
+            state_name = state_name.name
+
+        self.states[state_name] = {
+            "icon": icon,
+            "hover_icon": hover_icon if hover_icon else icon,
+            "tooltip": tooltip
+        }
+
+        # Automatically set the button to the very first state added
+        if self.current_state is None:
+            setBtnState(self, state_name)
+
+    def _setState(self, state_name: str):
+        """Should use setBtnState instead of this directly."""
+        if state_name not in self.states:
+            print(f"Warning: State '{state_name}' is not registered in this button.")
+            return
+
+        if self.current_state == state_name: return
+
+        self.current_state = state_name
+        self.refreshVisuals()
+
+    def setProperty(self, name, value):
+        set_success = super().setProperty(name, value)
+        if name == "state":
+            self._setState(value)
+        return set_success
+
+    def refreshVisuals(self):
+        """Paints the correct icon and tooltip based on current state and mouse presence."""
+        if not self.current_state:
+            return
+
+        state_data = self.states[self.current_state]
+
+        if self.is_hovered and self.isEnabled():
+            self.setIcon(state_data["hover_icon"])
+        else:
+            self.setIcon(state_data["icon"])
+
+        if state_data["tooltip"]:
+            self.setToolTip(state_data["tooltip"])
+
+    def enterEvent(self, event):
+        """Triggered when the mouse enters the button boundaries."""
+        self.is_hovered = True
+        self.refreshVisuals()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        """Triggered when the mouse leaves the button boundaries."""
+        self.is_hovered = False
+        self.refreshVisuals()
+        super().leaveEvent(event)
+
 def updateItemPlaceholder(main_widget: "QWidget", item: Union["QTableWidgetItem", "QLineEdit", "QPushButton"], text: str | None=None, placeholder: str=EMPTY_VALUE_STR):
     """If text is None, sets the item to have placeholder text"""
     font = item.font()
@@ -98,7 +175,10 @@ def updateItemPlaceholder(main_widget: "QWidget", item: Union["QTableWidgetItem"
         item.setForeground(main_widget.palette().text())
     item.setFont(font)
 
-def setBtnState(btn, state_value):
+def setBtnState(btn, state_value: str | Enum):
+    if isinstance(state_value, Enum):
+        state_value = state_value.name
+
     btn.setProperty("state", state_value)
     btn.style().unpolish(btn)
     btn.style().polish(btn)

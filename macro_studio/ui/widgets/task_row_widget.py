@@ -156,14 +156,13 @@ class TaskRowWidget(QFrame):
         is_alive = self.controller.isAlive()
         is_paused = self.controller.isPaused()
         is_enabled = self.controller.isEnabled()
-        worker_alive = self.controller.worker.is_alive
+        worker_alive = self.controller.worker.isAlive()
         worker_paused = self.controller.worker.isPaused()
         worker_running = worker_alive and not worker_paused
         current_state = self.controller.getState()
 
         display_text = "Unknown"
         state_color = IconColor.DISABLED
-
         if not is_enabled:
             display_text = "Disabled"
 
@@ -180,8 +179,8 @@ class TaskRowWidget(QFrame):
                 display_text = "Interrupted (Waiting for Engine)"
             state_color = "#F46800"
 
-        elif current_state == TaskState.PAUSED:
-            display_text = "Soft Paused"
+        elif current_state == TaskState.PAUSED or worker_paused:
+            display_text = "Soft Paused" if not worker_paused else "Soft Paused (Waiting for Engine)"
             state_color = "#FFC300"
 
         elif current_state == TaskState.CRASHED:

@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QMessageBox
 
 from macro_studio.core.execution.manual_task_wrapper import ManualTaskWrapper
 from macro_studio.core.execution.task_worker import TaskWorker
-from macro_studio.core.types_and_enums import LogLevel
+from macro_studio.core.types_and_enums import LogLevel, WorkerState
 from macro_studio.core.utils import global_logger
 from .task_controller import TaskController
 from .threaded_controller import ThreadedController
@@ -94,16 +94,14 @@ class TaskManager(QObject):
         return controller.context
 
     def startWorker(self):
-        self.worker.pause_state.clear()
-        self.worker.is_alive = True
+        self.worker.clearPauseState(WorkerState.RUNNING)
         self.worker.reloadControllers(self._getEnabledControllers())
         global_logger.log("Starting Macro...")
         self.worker.start()
         self.watchdog_timer.start(WORKER_MONITOR_RATE_MS)
 
     def stopWorker(self):
-        self.worker.is_alive = False
-        self.worker.pause_state.clear()
+        self.worker.clearPauseState(WorkerState.IDLE)
         self.watchdog_timer.stop()
         self.worker.handleStoppedEnd()
         return self._tryShowKillDialog()
@@ -119,14 +117,14 @@ class TaskManager(QObject):
          Returns:
              ``True`` if paused successfully, ``False`` if could not stop the worker.
         """
-        if self.worker.is_alive and not self.worker.isPaused():
+        if self.worker.pause(interrupt):
             self.watchdog_timer.stop()
-            self.worker.pause_state.trigger(interrupt)
             return self._tryShowKillDialog(True)
-        return True
+
+        return self.worker.isAlive()
 
     def resumeWorker(self):
-        elapsed = self.worker.resume() if self.worker.is_alive else None
+        elapsed = self.worker.resume() if self.worker.isAlive() else None
         if elapsed is not None: self.watchdog_timer.start(WORKER_MONITOR_RATE_MS)
         return elapsed
 
@@ -141,8 +139,8 @@ class TaskManager(QObject):
             global_logger.log(f"Engine Auto-Protect: A task has held the worker for {time_since_last_pulse:.2f} seconds without yielding.", level=LogLevel.WARN)
             # Try to pause the worker so the deadlock thing will come up
             if self.pauseWorker(False):
-                if self.worker.is_alive: # Somehow the task pulled through, clear the pause
-                    self.worker.pause_state.clear()
+                if self.worker.isAlive(): # Somehow the task pulled through, clear the pause
+                    self.worker.clearPauseState()
                 else:
                     self.engine.cancelMacroExecution()
 
@@ -173,8 +171,7 @@ class TaskManager(QObject):
                 del self.worker
                 self.worker = self._createAndMonitorWorker()
             else:
-                self.worker.is_alive = True
-                self.worker.pause_state.clear()
+                self.worker.clearPauseState()
                 global_logger.log("User chose to let the deadlocked task continue. Watchdog disabled for the remainder of this run", level=LogLevel.WARN)
                 return False # We walk away and let it keep spinning
         elif not is_pause:

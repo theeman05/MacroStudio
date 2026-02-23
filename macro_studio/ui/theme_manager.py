@@ -29,29 +29,8 @@ class ThemeManager:
         "selected_hover": "#007FF4",
 
         # --- Functional Buttons (Start/Stop/Etc) ---
-        "btn_start_bg": "#2ea043",  # Green
-        "btn_start_border": "#298e3b",
-        "btn_start_hover": "#3fb950",
-
-        "btn_stop_bg": "#da3633",  # Red
-        "btn_stop_border": "#d82a27",
-        "btn_stop_hover": "#f85149",
-
-        "btn_reset_bg": "#1f6feb",  # Blue
-        "btn_reset_border": "#1158c7",
-
         "btn_pick_bg": "#264f78",  # Navy
         "btn_pick_hover": "#3a6ea5",
-
-        # --- Dynamic States (Paused) ---
-        "btn_paused_bg": "#d29922",  # Orange
-        "btn_paused_border": "#b08800",
-        "btn_paused_hover": "#eac54f",
-
-        # --- Progress Bar ---
-        "progress_border": "#bbbbbb",
-        "progress_chunk": "#4CAF50",  # Green
-        "progress_paused": "#FFEB3B",  # Yellow
 
         # --- Table Widget ---
         "header_bg": "#242633",
@@ -83,29 +62,8 @@ class ThemeManager:
         "selected_hover": "#007FF4",
 
         # --- Functional Buttons ---
-        "btn_start_bg": "#45c458",  # Brighter Green
-        "btn_start_border": "#2ea043",
-        "btn_start_hover": "#36b04a",
-
-        "btn_stop_bg": "#ff5f59",  # Brighter Red
-        "btn_stop_border": "#da3633",
-        "btn_stop_hover": "#ff453e",
-
-        "btn_reset_bg": "#4ca1ff",  # Brighter Blue
-        "btn_reset_border": "#1f6feb",
-
         "btn_pick_bg": "#d0e8ff",  # Very Light Blue (so black text is readable)
         "btn_pick_hover": "#b3d7ff",
-
-        # --- Dynamic States (Paused) ---
-        "btn_paused_bg": "#ffcc4d",  # Sunflower Yellow
-        "btn_paused_border": "#e6b722",
-        "btn_paused_hover": "#ffdb75",
-
-        # --- Progress Bar ---
-        "progress_border": "#bbbbbb",
-        "progress_chunk": "#2ea043",  # Green
-        "progress_paused": "#f57c00",  # Orange (Yellow is too hard to see on white)
 
         # --- Table Widget ---
         "header_bg": "#e1e1e1",

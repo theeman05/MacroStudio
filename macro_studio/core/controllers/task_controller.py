@@ -206,7 +206,7 @@ class TaskController:
         was_hard_pause = self.isInterrupted()
 
         elapsed = None
-        if self.worker.is_alive and self.isPaused():
+        if self.worker.isAlive() and self.isPaused():
             elapsed = time.perf_counter() - self._pause_timestamp
 
         self._state = TaskState.RUNNING

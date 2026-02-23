@@ -10,6 +10,12 @@ class CaptureMode(Enum):
     POINT = auto()      # Single click
     REGION = auto()  # Drag selection
 
+class WorkerState(Enum):
+    IDLE = auto()
+    RUNNING = auto()
+    PAUSED = auto()
+    INTERRUPTED = auto()
+
 @dataclass(frozen=True)
 class CaptureTypeDef:
     mode: CaptureMode

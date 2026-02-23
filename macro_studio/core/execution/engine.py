@@ -87,7 +87,7 @@ class MacroStudio:
         Returns:
             True if the app is running any macros, false otherwise.
         """
-        return self._manager.worker.is_alive
+        return self._manager.worker.isAlive()
 
     def startMacroExecution(self):
         """Begins macro execution. If the engine is paused, resumes execution."""
@@ -132,14 +132,14 @@ class MacroStudio:
             global_logger.log("Globally Cancelled Execution" if not completed else "Macro Finished. All tasks completed.")
             self.ui.stopMacroVisuals()
 
-    def pauseMacroExecution(self, interrupt: bool=True):
+    def pauseMacroExecution(self, interrupt: bool=False):
         """
         Pauses the currently running task.
 
         Args:
             interrupt: Controls the mechanism used to pause.
 
-                * ``True`` (Default): **Interrupt & Cleanup.** Raises a ``TaskInterruptedException`` inside the task.
+                * ``True``: **Interrupt & Cleanup.** Raises a ``TaskInterruptedException`` inside the task.
                   This breaks the current step immediately (e.g., cuts short a ``taskSleep``), runs any
                   ``try/finally`` cleanup blocks to **release keys** and reset state, and then suspends.
                 * ``False``: **Freeze.** Suspends the generator execution at the exact current line.
@@ -152,11 +152,11 @@ class MacroStudio:
             self.ui.stopMacroVisuals()
             return False
 
-        self.ui.startMacroVisuals()
+        self.ui.resumeMacroVisuals()
         success = self._manager.pauseWorker(interrupt)
         if success:
             if self.isRunningMacros():
-                self.ui.pauseMacroVisuals()
+                self.ui.pauseMacroVisuals(interrupt)
                 if interrupt:
                     global_logger.log(
                         "Global Interrupt Active: Running tasks interrupted and cleaned up. (Current wait timers cancelled).")

@@ -109,7 +109,7 @@ class ThreadedController(TaskController):
                 raise TaskAbortException("Task stopped.")
 
             # Check for interrupt
-            if self.isInterrupted() or self.worker.pause_state.interrupted:
+            if self.isInterrupted() or self.worker.isInterrupted():
                 self._resume_event.clear()
                 raise TaskInterruptedException("Hard pause triggered!")
 
@@ -151,5 +151,5 @@ class ThreadedController(TaskController):
         self._resume_event.wait()
 
         # If one of the two are no longer alive, throw abort exception
-        if not (self.worker.is_alive and self.isAlive()):
+        if not (self.worker.isAlive() and self.isAlive()):
             raise TaskAbortException("Worker stopped while waiting for resume.")
