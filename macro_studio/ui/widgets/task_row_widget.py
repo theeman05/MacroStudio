@@ -180,7 +180,7 @@ class TaskRowWidget(QFrame):
             state_color = "#F46800"
 
         elif current_state == TaskState.PAUSED or worker_paused:
-            display_text = "Soft Paused" if not worker_paused else "Soft Paused (Waiting for Engine)"
+            display_text = "Paused" if not worker_paused else "Paused (Waiting for Engine)"
             state_color = "#FFC300"
 
         elif current_state == TaskState.CRASHED:

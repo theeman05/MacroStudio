@@ -3,7 +3,7 @@ import os
 from .base_store import BaseStore
 from .task_store import TaskStore
 from .variable_store import VariableStore
-from macro_studio.core.controllers.type_handler import GlobalTypeHandler
+from macro_studio.core.registries.type_handler import GlobalTypeHandler
 from macro_studio.core.utils import FileIO
 
 

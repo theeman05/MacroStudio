@@ -4,7 +4,7 @@ from PySide6.QtGui import QPainter, QPen, QColor, QKeyEvent
 from typing import TYPE_CHECKING
 
 from macro_studio.core.types_and_enums import CaptureMode
-from macro_studio.core.controllers.capture_type_registry import GlobalCaptureRegistry
+from macro_studio.core.registries.capture_type_registry import GlobalCaptureRegistry
 from macro_studio.core.data import VariableConfig
 
 if TYPE_CHECKING:

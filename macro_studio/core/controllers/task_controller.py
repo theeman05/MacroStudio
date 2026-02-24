@@ -8,6 +8,7 @@ from macro_studio.core.utils import global_logger
 from macro_studio.api.task_context import TaskContext
 
 if TYPE_CHECKING:
+    from macro_studio.core.controllers.task_manager import TaskManager
     from macro_studio.core.execution.task_worker import TaskWorker
 
 
@@ -24,7 +25,7 @@ DEAD_STATES = (TaskState.STOPPED, TaskState.FINISHED, TaskState.CRASHED)
 class TaskController:
     def __init__(
             self,
-            worker: "TaskWorker",
+            manager: "TaskManager",
             task_func,
             task_id: int,
             repeat=False,
@@ -37,7 +38,8 @@ class TaskController:
         self.repeat = repeat
         self.state_change_by_worker = False
         self.context = self._createContext()
-        self.worker = worker
+        self.worker = manager.worker
+        self.manager = manager
         self.name = unique_name or task_id
 
         self._state = TaskState.RUNNING if is_enabled else TaskState.STOPPED
@@ -97,6 +99,9 @@ class TaskController:
 
     def isInterrupted(self):
         return self._state == TaskState.INTERRUPTED
+
+    def isValid(self):
+        return self.manager.getController(self.name) is not None
 
     def _unsafeResetGenerator(self, new_state: TaskState, wake_time: float=None):
         self._generation += 1

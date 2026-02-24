@@ -1,9 +1,11 @@
+import ctypes
+import os
 import uuid, sys, signal
 from datetime import datetime
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QLabel, QTabWidget, QDockWidget, QStatusBar,QVBoxLayout, QWidget
 )
-from PySide6.QtGui import QCloseEvent, QFont
+from PySide6.QtGui import QCloseEvent, QFont, QIcon
 from PySide6.QtCore import Qt, Signal, QTimer
 from pynput import keyboard
 
@@ -26,11 +28,16 @@ class MainWindow(QMainWindow):
     hotkey_signal = Signal(str)
 
     def __init__(self, task_manager, profile):
+        if sys.platform == 'win32':
+            my_app_id = 'com.theeman05.macro_studio.client.v1'
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(my_app_id)
+
         self.app = QApplication(sys.argv)
         super().__init__()
-        self.setWindowTitle(f"Macro Studio v1.7")
+        self.setWindowTitle(f"Macro Studio")
         self.resize(900, 700)
         self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint)
+        self._setIcon()
 
         global_font = QFont("Segoe UI", 10)
         global_font.setStyleHint(QFont.StyleHint.SansSerif)
@@ -93,6 +100,17 @@ class MainWindow(QMainWindow):
         self._onTabChanged(0)
         self.toggleOverlay()
         self.stopMacroVisuals()
+
+    def _setIcon(self):
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        root_dir = os.path.dirname(current_dir)
+        icon_path = os.path.join(root_dir, "assets", "app_icon.ico")
+        if os.path.exists(icon_path):
+            app_icon = QIcon(icon_path)
+            self.setWindowIcon(app_icon)
+            self.app.setWindowIcon(app_icon)
+        else:
+            print(f"ERROR: Icon not found! Check the path above.")
 
     def _handleInterrupt(self, signum, frame):
         self.stop_signal.emit(True)

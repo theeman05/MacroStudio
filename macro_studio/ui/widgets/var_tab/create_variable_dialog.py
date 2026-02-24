@@ -6,8 +6,8 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
                                QLineEdit, QComboBox, QLabel)
 from PySide6.QtCore import Qt
 
-from macro_studio.core.controllers.type_handler import GlobalTypeHandler
-from macro_studio.core.controllers.capture_type_registry import GlobalCaptureRegistry
+from macro_studio.core.registries.type_handler import GlobalTypeHandler
+from macro_studio.core.registries.capture_type_registry import GlobalCaptureRegistry
 from macro_studio.ui.shared import flashError
 
 if TYPE_CHECKING:

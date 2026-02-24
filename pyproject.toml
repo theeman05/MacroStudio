@@ -1,7 +1,7 @@
 [tool.setuptools.package-data]
-macro_creator = ["ui/templates/*.qss"]
+"macro_studio" = ["*", "**/*"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["macro_creator*"]
+include = ["macro_studio*"]
 namespaces = false

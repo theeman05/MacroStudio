@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from PySide6.QtCore import Signal
 
 from .base_store import BaseStore
-from macro_studio.core.controllers.type_handler import GlobalTypeHandler
+from macro_studio.core.registries.type_handler import GlobalTypeHandler
 from macro_studio.core.utils import FileIO, global_logger
 
 

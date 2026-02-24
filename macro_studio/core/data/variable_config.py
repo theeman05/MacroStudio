@@ -2,9 +2,9 @@ from enum import Enum
 
 from typing import Hashable
 
-from macro_studio.core.controllers.type_handler import GlobalTypeHandler
+from macro_studio.core.registries.type_handler import GlobalTypeHandler
 from macro_studio.core.types_and_enums import CaptureMode
-from macro_studio.core.controllers.capture_type_registry import GlobalCaptureRegistry
+from macro_studio.core.registries.capture_type_registry import GlobalCaptureRegistry
 
 class VariableConfig:
     def __init__(self, data_type: CaptureMode | type, default_val=None, pick_hint: str=None):

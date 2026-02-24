@@ -4,7 +4,7 @@ from enum import Enum
 from PySide6.QtCore import QObject, Signal, QPoint
 from PySide6.QtGui import QUndoCommand
 
-from macro_studio.core.controllers.type_handler import GlobalTypeHandler
+from macro_studio.core.registries.type_handler import GlobalTypeHandler
 
 
 class ActionType(str, Enum):

@@ -2,11 +2,11 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import (
     QWidget,
-    QHeaderView, QMenu, QStyledItemDelegate, QTableView, QLineEdit, QHBoxLayout, QGridLayout, QDialog
+    QHeaderView, QMenu, QStyledItemDelegate, QTableView, QLineEdit, QHBoxLayout, QGridLayout
 )
 from PySide6.QtCore import Qt, QEvent, QTimer
 
-from macro_studio.core.controllers.capture_type_registry import GlobalCaptureRegistry
+from macro_studio.core.registries.capture_type_registry import GlobalCaptureRegistry
 from macro_studio.ui.shared import HoverButton
 from macro_studio.ui.widgets.var_tab.variable_table_model import VariableTableModel
 from macro_studio.ui.widgets.var_tab.create_variable_dialog import VarCreateOverlay

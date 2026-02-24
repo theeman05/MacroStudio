@@ -12,21 +12,24 @@ The **Python Macro Studio** is a robust automation framework that bridges the ga
 If you can code it in Python, you can automate it. Import any library, use complex logic, and interact with the OS at a deep level. You are not limited to "click here, wait 5 seconds."
 
 ### 🎛️ Visual Task Manager
+![Task Manager UI](docs/assets/TaskManager.png)
 
 The Visual Task Manager is the central orchestration hub of the studio. It provides a real-time, graphical interface for monitoring and controlling the execution flow of both coded Python tasks and manually recorded macros.
 
-![Task Manager UI](docs/assets/task_manager_ui.png) ### Key Features
+#### Key Features
 * **Real-Time Polling:** The UI continuously polls the background engine at 10 FPS, providing immediate visual feedback on which task is actively executing.
 * **Strict Source of Truth:** Intelligently handles state conflicts between volatile code and persistent UI. Scripted task states remain session-only to protect code integrity, while manual task configurations (`repeat` toggles) are safely serialized to your JSON profile.
 * **Graceful Teardown:** Built-in OS signal interception ensures that interrupting a task via the UI (or a terminal `Ctrl+C`) gracefully shuts down background threads without crashing the application.
 
 ### 🧩 Variable Management
-Predefine variables (Integers, Booleans, Regions, Points, etc.) that are exposed in the GUI. Users can tweak settings (like `click_point` or `scan_region`) safely via the interface without ever touching the code.
+![Variables UI](docs/assets/VariablesTab.png) 
 
-### ⚡ Smart Config
-Variables are type-safe and validated instantly. As of right now, the engine supports complex types like `QRect` (Regions) and `QPoint` (Coordinates) with visual overlays, ensuring users don't have to guess pixel coordinates (but they still can if they want to)!
+Predefine variables (Integers, Booleans, Regions, Points, etc.) that are exposed in the GUI. Users can tweak settings (like `click_spot` or `scan_area`) safely via the interface without ever touching the code.
+
+As of right now, the engine supports complex types like `QRect` (Regions) and `QPoint` (Coordinates) with visual overlays, ensuring users don't have to guess pixel coordinates (but they still can if they want to)!
 
 ### 🎥 Visual Task Recorder (No-Code)
+![Recorder UI](docs/assets/RecorderTab.png) 
 
 The entry barrier is now lowered! Using the `Recorder` tab, users can:
 

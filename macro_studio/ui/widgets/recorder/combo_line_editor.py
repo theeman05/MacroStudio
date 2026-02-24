@@ -4,7 +4,7 @@ from PySide6.QtCore import QPoint, QTimer, Signal, QAbstractListModel, Qt, QMode
 from PySide6.QtWidgets import QStackedWidget, QComboBox, QLineEdit, QWidget, QHBoxLayout, QMenu
 
 from macro_studio.core.types_and_enums import CaptureMode
-from macro_studio.core.controllers.type_handler import GlobalTypeHandler
+from macro_studio.core.registries.type_handler import GlobalTypeHandler
 from macro_studio.ui.shared import flashError, createIconLabel
 from .action_bindings import SneakyWidget, SneakyComboEditor
 

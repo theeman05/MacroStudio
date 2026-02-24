@@ -1,8 +1,28 @@
+from functools import wraps
 from typing import TYPE_CHECKING, Hashable
-from macro_studio.core.types_and_enums import LogLevel
+
+from macro_studio.core.types_and_enums import LogLevel, TaskDeletedError
 
 if TYPE_CHECKING:
     from macro_studio.core.controllers.task_controller import TaskController
+
+
+def require_active_task(func):
+    """Decorator: Checks if the task is still alive before running the method."""
+
+    @wraps(func)
+    def wrapper(self: "TaskContext", *args, **kwargs):
+        is_valid = self.isValid()
+
+        if not is_valid:
+            raise TaskDeletedError(
+                f"Handle Error: Task '{self._controller.name}' has been deleted and cannot be accessed."
+            )
+
+        return func(self, *args, **kwargs)
+
+    return wrapper
+
 
 class TaskContext:
     def __init__(self, controller: "TaskController"):
@@ -44,16 +64,23 @@ class TaskContext:
     def getName(self):
         return self._controller.name
 
-    def setEnabled(self, enabled: bool):
-        self._controller.setEnabled(enabled)
-
     def isEnabled(self):
         return self._controller.isEnabled()
 
+    def isValid(self) -> bool:
+        """Safe method to check status without raising an error."""
+        return self._controller.isValid()
+
+    @require_active_task
+    def setEnabled(self, enabled: bool):
+        self._controller.setEnabled(enabled)
+
+    @require_active_task
     def restart(self):
         """Kills the current instance of the task and starts a fresh one at the next work cycle."""
         self._controller.restart()
 
+    @require_active_task
     def pause(self, interrupt: bool = False):
         """
         If not paused already, halts the task from running its next step.
@@ -67,6 +94,7 @@ class TaskContext:
         """
         return self._controller.pause(interrupt)
 
+    @require_active_task
     def resume(self):
         """
         If the engine is running and task was previously paused, resumes from where it left off.
@@ -76,6 +104,7 @@ class TaskContext:
         """
         return self._controller.resume()
 
+    @require_active_task
     def stop(self):
         """Attempts to stop a task on its next cycle."""
         self._controller.stop()

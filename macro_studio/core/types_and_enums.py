@@ -48,4 +48,8 @@ class TaskInterruptedException(BaseException):
     """Raised when the user triggers an interrupted pause."""
     pass
 
+class TaskDeletedError(Exception):
+    """Raised when attempting to operate on a task that has been removed."""
+    pass
+
 TaskFunc: TypeAlias = Callable[..., Generator | None]

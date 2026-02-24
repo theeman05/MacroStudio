@@ -9,7 +9,7 @@ from .task_controller import TaskController, TaskState
 class ThreadedController(TaskController):
     def __init__(
             self,
-            scheduler,
+            manager,
             task_func,
             task_id: int,
             repeat=False,
@@ -18,7 +18,7 @@ class ThreadedController(TaskController):
             task_args: tuple = (),  # Default to empty tuple
             task_kwargs: dict = None  # Default to None for mutable safety
     ):
-        super().__init__(scheduler, task_func, task_id, repeat, unique_name, is_enabled, task_args, task_kwargs)
+        super().__init__(manager, task_func, task_id, repeat, unique_name, is_enabled, task_args, task_kwargs)
 
         self._os_thread = None
         self._resume_event = threading.Event()

@@ -1,6 +1,6 @@
 import time
 from typing import TYPE_CHECKING
-
+from functools import wraps
 from PySide6.QtCore import QObject, Signal, QTimer
 from PySide6.QtWidgets import QMessageBox
 
@@ -19,9 +19,9 @@ WORKER_MONITOR_RATE_MS = 2000
 PULSE_DEADLOCK_DURATION_S = 5.0
 
 class ManualTaskController(TaskController):
-    def __init__(self, worker, var_store, task_model: "TaskModel", cid: int):
+    def __init__(self, manager, var_store, task_model: "TaskModel", cid: int):
         self._wrapper = ManualTaskWrapper(var_store, task_model)
-        super().__init__(worker=worker, task_func=self._wrapper.runTask, task_id=cid, repeat=task_model.repeat,
+        super().__init__(manager=manager, task_func=self._wrapper.runTask, task_id=cid, repeat=task_model.repeat,
                          unique_name=task_model.name,is_enabled=not task_model.disabled)
 
     @property
@@ -81,17 +81,21 @@ class TaskManager(QObject):
 
     def createController(self, task_func, enabled: bool, repeat: bool, task_args, task_kwargs):
         c_id = self.next_cid
-        controller = TaskController(self.worker, task_func, c_id, repeat=repeat, is_enabled=enabled,
+        controller = TaskController(self, task_func, c_id, repeat=repeat, is_enabled=enabled,
                                     task_args=task_args, task_kwargs=task_kwargs)
         self._registerController(controller)
         return controller.context
 
-    def createThreadController(self, fun_in_thread, enabled: bool, repeat: bool, task_args, kwargs):
+    def createThreadController(self, fun_in_thread, enabled: bool, repeat: bool, task_args, task_kwargs):
         c_id = self.next_cid
-        controller = ThreadedController(self.worker, fun_in_thread, c_id, is_enabled=enabled, task_args=task_args,
-                                        task_kwargs=kwargs)
+        controller = ThreadedController(self, fun_in_thread, c_id, repeat=repeat, is_enabled=enabled, task_args=task_args,
+                                        task_kwargs=task_kwargs)
         self._registerController(controller)
         return controller.context
+
+    def getController(self, name_or_id: str | int):
+        controller = self.controllers.get(name_or_id)
+        return controller.context if controller else None
 
     def startWorker(self):
         self.worker.clearPauseState(WorkerState.RUNNING)
@@ -142,7 +146,7 @@ class TaskManager(QObject):
                 if self.worker.isAlive(): # Somehow the task pulled through, clear the pause
                     self.worker.clearPauseState()
                 else:
-                    self.engine.cancelMacroExecution()
+                    self.engine.cancelExecution()
 
     def _createAndMonitorWorker(self):
         worker = TaskWorker(self.engine, self._loop_delay)
@@ -194,7 +198,7 @@ class TaskManager(QObject):
         self.controllers[controller.name] = controller
 
     def _onManualTaskAdded(self, task_model: "TaskModel"):
-        self._registerController(ManualTaskController(self.worker, self.profile.vars, task_model, self.next_cid))
+        self._registerController(ManualTaskController(self, self.profile.vars, task_model, self.next_cid))
 
     def _onManualTaskRemoved(self, task_name: str):
         if task_name in self.controllers:
