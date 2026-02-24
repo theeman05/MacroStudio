@@ -1,9 +1,6 @@
-import importlib.resources
+import os
+import sys
 from string import Template
-
-from PySide6.QtGui import QColor, QPalette
-
-from macro_studio.ui import templates
 
 
 class ThemeManager:
@@ -78,13 +75,19 @@ class ThemeManager:
     def applyTheme(app, palette_name="DARK"):
         palette_dict = ThemeManager.DARK_THEME if palette_name == "DARK" else ThemeManager.LIGHT_THEME
 
-        try:
-            template_file = importlib.resources.files(templates).joinpath("style_template.qss")
-            content = template_file.read_text(encoding="utf-8")
-        except AttributeError:
-            content = importlib.resources.read_text(templates, "style_template.qss")
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        template_path = os.path.join(current_dir, "templates", "style_template.qss")
 
-        # This looks for $key instead of {key}
+        if hasattr(sys, '_MEIPASS'):
+            template_path = os.path.join(sys._MEIPASS, "ui", "templates", "style_template.qss")
+
+        try:
+            with open(template_path, "r", encoding="utf-8") as f:
+                content = f.read()
+        except FileNotFoundError:
+            print(f"CRITICAL ERROR: Could not find style at {template_path}")
+            content = ""
+
         src = Template(content)
         final_style = src.safe_substitute(**palette_dict)
 

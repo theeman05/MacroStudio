@@ -11,3 +11,5 @@
 # JetBrains project configuration folder
 .idea/
 /data/
+dist/
+build/

@@ -5,3 +5,6 @@
 where = ["."]
 include = ["macro_studio*"]
 namespaces = false
+
+[project.scripts]
+macro-studio = "macro_studio.main:main"

@@ -21,6 +21,22 @@ from .widgets.main_window.integrated_header import IntegratedHeader
 from .widgets.main_window.runtime_widget import RuntimeWidget
 
 
+def getResourcePath(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        # DEV MODE:
+        # We are currently in: .../macro_studio/ui/main_window.py
+        # We need to go up ONE level to find: .../macro_studio/assets
+
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        base_path = os.path.dirname(current_dir)  # Go up from 'ui' to 'macro_studio'
+
+    return os.path.join(base_path, relative_path)
+
+
 class MainWindow(QMainWindow):
     start_signal = Signal()
     stop_signal = Signal(bool)
@@ -102,15 +118,13 @@ class MainWindow(QMainWindow):
         self.stopMacroVisuals()
 
     def _setIcon(self):
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        root_dir = os.path.dirname(current_dir)
-        icon_path = os.path.join(root_dir, "assets", "app_icon.ico")
+        icon_path = getResourcePath(os.path.join("assets", "app_icon.ico"))
         if os.path.exists(icon_path):
             app_icon = QIcon(icon_path)
             self.setWindowIcon(app_icon)
             self.app.setWindowIcon(app_icon)
         else:
-            print(f"ERROR: Icon not found! Check the path above.")
+            print(f"WARNING: Icon not found at {icon_path}")
 
     def _handleInterrupt(self, signum, frame):
         self.stop_signal.emit(True)
