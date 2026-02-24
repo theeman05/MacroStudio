@@ -50,7 +50,7 @@ The Engine features a robust **Global Type Registry** that bridges the gap betwe
 ## 🛠️ Usage
 
 ### 1. Create a Standard Task (Generators)
-The most efficient way to write tasks is using Python Generators. This allows the engine to run hundreds of tasks simultaneously on a single thread.
+The most efficient way to write tasks is using Python Generators. This allows the engine to run hundreds of tasks simultaneously on a single thread. Setting the ``repeat`` kwarg to True (default False) makes the task automatically repeat upon finishing.
 
 * **Key Rule:** Use `yield from taskSleep(seconds)` instead of `time.sleep()` in standard tasks.
 
@@ -69,7 +69,7 @@ def my_task():
 class BasicMacro:
     def __init__(self, studio):
         # Add the task to the studio
-        studio.addRunTask(my_task)
+        studio.addRunTask(my_task, repeat=True)
 
 ```
 
