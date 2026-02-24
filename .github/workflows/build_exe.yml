@@ -1,0 +1,33 @@
+name: Build EXE
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+          
+      - name: Build EXE
+        # This assumes you have a build script or spec file
+        run: pyinstaller macro_studio.spec 
+        
+      - name: Upload EXE to Release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: dist/MacroStudio.exe
+          asset_name: MacroStudio.exe
+          tag: ${{ github.ref }}
