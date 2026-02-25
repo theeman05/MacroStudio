@@ -55,7 +55,7 @@ class ManualTaskWrapper:
         self.model = model
         self.steps.clear()
         for raw_step in model.steps:
-            step = TimelineStep.fromDict(raw_step)
+            step = TimelineStep.fromJson(raw_step)
             # Translate mouse and key stuff to pydirectinput
             if step.action_type == ActionType.MOUSE:
                 button, pos = step.value

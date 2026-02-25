@@ -1,58 +1,42 @@
-import os
+from dataclasses import dataclass
 
-from .base_store import BaseStore
 from .task_store import TaskStore
 from .variable_store import VariableStore
-from macro_studio.core.registries.type_handler import GlobalTypeHandler
-from macro_studio.core.utils import FileIO
+from .database_manager import DatabaseManager
 
+@dataclass
+class TaskRelationship:
+    id: int
+    task_id: int
+    repeat: bool=False
+    enabled: bool=True
 
 class Profile:
-    def __init__(self, profile_name: str, auto_load=True):
-        super().__init__()
+    def __init__(self, profile_name: str, parent=None):
+        self.db = DatabaseManager()
         self.name = profile_name
-        self.vars = VariableStore()
-        self.tasks = TaskStore()
-        self.has_saved = False
+        self.id = self._get_or_create_id()
+        self.task_relationships = set()
 
-        self._registered_stores: list[BaseStore] = [
-            self.tasks,
-            self.vars
-        ]
+        self.vars = VariableStore(self.db, self.id, parent=parent)
+        self.tasks = TaskStore(self.db, self.id, parent=parent)
 
-        if auto_load: self.load()
+        self.load()
 
-    def save(self):
-        if self.has_saved: return
-        self.has_saved = True
-        master_data = {}
-
-        for store in self._registered_stores:
-            GlobalTypeHandler.setIfEvals(store.store_name, store.serialize(), master_data)
-
-        if master_data:
-            FileIO.exportData(master_data, self.getFilepath())
-        else:
-            FileIO.deleteFile(self.getFilepath())
+    def _get_or_create_id(self):
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM profiles WHERE name = ?", (self.name,))
+            row = cursor.fetchone()
+            if row:
+                return row["id"]
+            else:
+                cursor.execute("INSERT INTO profiles (name) VALUES (?)", (self.name,))
+                conn.commit()
+                return cursor.lastrowid
 
     def load(self):
-        self.has_saved = False
-        master_data = FileIO.importData(self.getFilepath())
-        if master_data is not None:
-            for store in self._registered_stores:
-                # If the JSON file has this store's data, pass it down
-                if store.store_name in master_data:
-                    store.deserialize(master_data.pop(store.store_name))
-                else:
-                    # If missing (e.g. an older save file), pass None
-                    store.deserialize(None)
-
-    def getFilepath(self) -> str:
-        base_dir = os.path.join(os.getcwd(), "data", "profiles")
-
-        os.makedirs(base_dir, exist_ok=True)
-
-        safe_name = "".join(c for c in self.name if c.isalnum() or c in (' ', '_', '-')).strip()
-        safe_name = safe_name.replace(" ", "_").lower()
-
-        return os.path.join(base_dir, f"{safe_name}.json")
+        self.task_relationships.clear()
+        self.vars.load()
+        self.tasks.load()
+        # Load relationships

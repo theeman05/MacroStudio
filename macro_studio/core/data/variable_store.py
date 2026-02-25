@@ -1,24 +1,28 @@
-from typing import Hashable
-from PySide6.QtCore import Signal
+from typing import TYPE_CHECKING, Hashable
+from PySide6.QtCore import Signal, QObject
 
-from .base_store import BaseStore
 from .variable_config import VariableConfig
 from macro_studio.core.types_and_enums import CaptureMode
 from macro_studio.core.registries.capture_type_registry import GlobalCaptureRegistry
 
+if TYPE_CHECKING:
+    from .database_manager import DatabaseManager
 
-class VariableStore(BaseStore):
+class VariableStore(QObject):
+    """Variables are localized to the profile"""
     varAdded = Signal(str, object) # (key string, config)
     varRemoved = Signal(str, object) # (key string, config)
     varChanged = Signal(str) # (key string)
 
-    def __init__(self):
-        super().__init__("variables")
+    def __init__(self, db: "DatabaseManager", profile_id: int, parent=None):
+        super().__init__(parent)
+        self.db = db
+        self._profile_id = profile_id
         self._vars: dict[str, VariableConfig] = {}
 
     def add(self, key: Hashable, data_type: CaptureMode | type, default_val: object=None, pick_hint: str=None):
         """
-        Add a variable to the store.
+        Add a variable to the store AND immediately upserts to DB.
 
         If the key is present already and value types differ, overwrites the previous variable.
         Args:
@@ -31,6 +35,7 @@ class VariableStore(BaseStore):
         if key_str not in self:
             config = VariableConfig(data_type, default_val, pick_hint)
             self._vars[key_str] = config
+            self._sql_upsert(key_str, config)
             self.varAdded.emit(key_str, config)
         else:
             config = self[key_str]
@@ -47,13 +52,20 @@ class VariableStore(BaseStore):
                 config.data_type = data_type
                 config.value = default_val
 
-            if has_changes: self.varChanged.emit(key_str)
+            if has_changes:
+                self._sql_upsert(key_str, config)
+                self.varChanged.emit(key_str)
 
     def remove(self, key: Hashable) -> VariableConfig | None:
         """Attempts to remove the key from the store. If the key is not present, returns None."""
         key_str = VariableConfig.keyToStr(key)
         if key_str in self:
             config = self._vars.pop(key_str)
+            with self.db.get_connection() as conn:
+                conn.execute("DELETE FROM variables WHERE profile_id = ? AND key = ?",
+                             (self._profile_id, key_str))
+                conn.commit()
+
             self.varRemoved.emit(key_str, config)
             return config
         return None
@@ -72,9 +84,29 @@ class VariableStore(BaseStore):
         key_str = VariableConfig.keyToStr(key)
 
         if not key_str in self: raise KeyError(f"Could not find key '{key_str}' in store.")
+        config = self._vars[key_str]
+        config.value = new_value
+        val_str = config.valToStr()
+        with self.db.get_connection() as conn:
+            conn.execute("UPDATE variables SET value = ? WHERE profile_id = ? AND key = ?",
+                         (val_str, self._profile_id, key_str))
+            conn.commit()
 
-        self._vars[key_str].value = new_value
         self.varChanged.emit(key_str)
+
+    def _sql_upsert(self, key, config):
+        """Helper to insert or replace a record."""
+        type_str = config.data_type.__name__
+        val_str = config.valToStr()
+        with self.db.get_connection() as conn:
+            conn.execute("""
+                         INSERT INTO variables (profile_id, key, value, data_type, hint)
+                         VALUES (?, ?, ?, ?, ?)
+                         ON CONFLICT(profile_id, key) DO UPDATE SET value=excluded.value,
+                                                                    data_type=excluded.data_type,
+                                                                    hint=excluded.hint
+                         """, (self._profile_id, key, val_str, type_str, config.hint))
+            conn.commit()
 
     def get(self, key: Hashable) -> VariableConfig | None:
         return self._vars.get(VariableConfig.keyToStr(key))
@@ -88,21 +120,13 @@ class VariableStore(BaseStore):
     def keys(self):
         return self._vars.keys()
 
-    def serialize(self):
-        serial_data = {}
-        for key_str, var_config in self._vars.items():
-            serial_data[key_str] = var_config.toDict()
-
-        return serial_data
-
-    def deserialize(self, data: dict):
-        if not data: return
-
-        new_vars = {}
-        for key_str, var_data in data.items():
-            new_vars[key_str] = VariableConfig.fromDict(var_data)
-
-        self._vars = new_vars
+    def load(self):
+        self._vars.clear()
+        with self.db.get_connection() as conn:
+            rows = conn.execute("SELECT * FROM variables WHERE profile_id = ?", (self._profile_id,))
+            for row in rows:
+                config = VariableConfig.fromRow(row)
+                self._vars[row["key"]] = config
 
     def __contains__(self, item):
         return item in self._vars

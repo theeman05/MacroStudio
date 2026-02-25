@@ -1,48 +1,75 @@
-import re
+import json, re
 from dataclasses import dataclass
-from PySide6.QtCore import Signal
+from datetime import datetime
+from typing import TYPE_CHECKING
 
-from .base_store import BaseStore
+from PySide6.QtCore import Signal, QObject
+
 from macro_studio.core.registries.type_handler import GlobalTypeHandler
 from macro_studio.core.utils import FileIO, global_logger
+
+if TYPE_CHECKING:
+    from .database_manager import DatabaseManager
 
 
 @dataclass
 class TaskModel:
     name: str
     steps: list=None
-    repeat: bool=False
-    disabled: bool=False
+    repeat: bool=False # REMOVE
+    disabled: bool=False # REMOVE
+    created_at: str | datetime = None
+    id: int = None
 
     def __post_init__(self):
         if self.steps is None: self.steps = []
 
     def toDict(self):
         serial = {"name": self.name}
-        GlobalTypeHandler.setIfEvals("repeat", self.repeat, serial)
         GlobalTypeHandler.setIfEvals("steps", self.steps, serial)
-        GlobalTypeHandler.setIfEvals("disabled", self.disabled, serial)
+        GlobalTypeHandler.setIfEvals("created_at", self.created_at, serial)
         return serial
 
-class TaskStore(BaseStore):
+    def dumpSteps(self) -> str | None:
+        if not self.steps: return None
+        return json.dumps(self.steps, default=str)
+
+class TaskStore(QObject):
+    """Tasks are globalized, available for all profiles"""
     activeStepSet = Signal()
     taskAdded = Signal(TaskModel)
     taskRemoved = Signal(str) # (task name)
     taskSaved = Signal(TaskModel)
     taskRenamed = Signal(str, str) # (old name, new name)
 
-    def __init__(self):
-        super().__init__("tasks")
+    def __init__(self, db: "DatabaseManager", profile_id: int, parent=None):
+        super().__init__(parent)
+        self.db = db
         self.tasks: list[TaskModel] = []
+        self._profile_id = profile_id
         self._active_idx = -1
 
     def createTask(self, name_or_model: str | TaskModel, set_as_active=False):
         """Creates a new task and adds it to the end of the list. Assumes the name is unique."""
         new_task = TaskModel(name=name_or_model) if isinstance(name_or_model, str) else name_or_model
         self.tasks.append(new_task)
-        idx = len(self.tasks) - 1
+
+        steps_json = new_task.dumpSteps()
+        with self.db.get_connection() as conn:
+            cursor = conn.execute("""
+                  INSERT INTO tasks (name, steps)
+                  VALUES (?, ?)
+                  RETURNING id, created_at
+            """, (new_task.name, steps_json))
+
+            row = cursor.fetchone()
+            new_task.created_at = row["created_at"]
+            new_task.id = row["id"]
+
+            conn.commit()
+
         if set_as_active:
-            self.setActiveTask(idx)
+            self.setActiveTask(len(self.tasks) - 1)
 
         self.taskAdded.emit(new_task)
 
@@ -56,6 +83,11 @@ class TaskStore(BaseStore):
             return None
 
         task = self.tasks.pop(task_idx)
+        with self.db.get_connection() as conn:
+            conn.execute("DELETE FROM tasks WHERE profile_id = ? AND name = ?",
+                         (self._profile_id, task.name))
+            conn.commit()
+
         self.taskRemoved.emit(task.name)
 
         if not self.tasks: # Out of tasks
@@ -74,19 +106,36 @@ class TaskStore(BaseStore):
         old_name = task.name
         if old_name != new_name:
             task.name = new_name
+            with self.db.get_connection() as conn:
+                conn.execute("UPDATE tasks SET name = ? WHERE profile_id = ? AND name = ?", (new_name, self._profile_id, old_name))
+                conn.commit()
             self.taskRenamed.emit(old_name, new_name)
 
     def _silentCreateTask(self, task):
         self._active_idx = 0  # Silently set the task so we don't reload anything
         self.createTask(task)
 
-    def saveStepsToActive(self, serialized_steps):
+    def saveStepsToActive(self, json_steps):
         task = self.getActiveTask()
         if task:
-            task.steps = serialized_steps
+            task.steps = json_steps
         else:
-            task = TaskModel(name="New Task", steps=serialized_steps)
+            task = TaskModel(name="New Task", steps=json_steps)
             self._silentCreateTask(task)
+
+        steps_json = task.dumpSteps()
+        with self.db.get_connection() as conn:
+            cursor = conn.execute("""
+                UPDATE tasks SET steps = ? WHERE profile_id = ? AND name = ?
+                RETURNING id, created_at
+             """,(steps_json, self._profile_id, task.name))
+
+            row = cursor.fetchone()
+            task.created_at = row["created_at"]
+            task.id = row["id"]
+
+            conn.commit()
+
         self.taskSaved.emit(task)
 
     def setActiveTask(self, task_idx: int):
@@ -170,24 +219,25 @@ class TaskStore(BaseStore):
         safe_name = self.generateUniqueName(original_name)
         data["name"] = safe_name
         task_model = TaskModel(**data)
-        self.tasks.append(task_model)
+        self.createTask(task_model)
 
         global_logger.log(f"Imported task '{original_name}' as '{safe_name}'.")
 
         return True
 
-    def serialize(self):
-        serial_data = []
-        for task_model in self.tasks:
-            serial_data.append(task_model.toDict())
+    def load(self):
+        self.tasks.clear()
 
-        return serial_data
-
-    def deserialize(self, data):
-        if not data: return
-        for task_data in data:
-            task_model = TaskModel(**task_data)
-            self.tasks.append(task_model)
+        with self.db.get_connection() as conn:
+            rows = conn.execute("SELECT * FROM tasks WHERE profile_id = ? ORDER BY created_at", (self._profile_id,))
+            for row in rows:
+                j_steps = row["steps"]
+                self.tasks.append(TaskModel(
+                    name=row["name"],
+                    steps=json.loads(j_steps) if j_steps else None,
+                    created_at = row["created_at"],
+                    id = row["id"]
+                ))
 
         if self.tasks: self.setActiveTask(0)
 

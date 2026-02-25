@@ -39,7 +39,7 @@ def getResourcePath(relative_path):
 
 class MainWindow(QMainWindow):
     start_signal = Signal()
-    stop_signal = Signal(bool)
+    stop_signal = Signal()
     pause_signal = Signal(bool) # Interrupted
     hotkey_signal = Signal(str)
 
@@ -127,7 +127,7 @@ class MainWindow(QMainWindow):
             print(f"WARNING: Icon not found at {icon_path}")
 
     def _handleInterrupt(self, signum, frame):
-        self.stop_signal.emit(True)
+        self.stop_signal.emit()
         QApplication.instance().quit()
 
     def _onTabChanged(self, index):
@@ -181,7 +181,7 @@ class MainWindow(QMainWindow):
 
     def onStopClicked(self):
         self.stopMacroVisuals()
-        self.stop_signal.emit(False)
+        self.stop_signal.emit()
 
     def startMacroVisuals(self):
         self.setState(WorkerState.RUNNING)
@@ -218,13 +218,12 @@ class MainWindow(QMainWindow):
             else:
                 self.onInterruptClicked()
         elif hotkey_id == "F10":
-            self.stop_signal.emit(False)
+            self.stop_signal.emit()
             self.stopMacroVisuals()
 
     def closeEvent(self, event: QCloseEvent):
-        self.stop_signal.emit(True)
+        self.stop_signal.emit()
         self.overlay.destroy()
-        self.profile.save()
         event.accept()
 
     # --- LOGGING (Thread Safe) ---

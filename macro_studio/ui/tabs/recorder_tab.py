@@ -128,7 +128,7 @@ class RecorderTab(QWidget):
     def saveActiveTask(self):
         change_idx = self.undo_stack.index()
         if self.undo_stack.isClean() or change_idx == self.index_on_save: return
-        serial_steps = []
+        json_steps = []
         for i in range(self.timeline_model.count()):
             item = self.timeline_list.item(i)
             if not item:
@@ -136,10 +136,10 @@ class RecorderTab(QWidget):
                 return
             widget = self.timeline_list.itemWidget(item)
             self._tryUpdatePartnerData(widget)
-            serial_steps.append(widget.timeline_data.toDict())
+            json_steps.append(widget.timeline_data.toJson())
 
         self.index_on_save = change_idx
-        self.tasks.saveStepsToActive(serial_steps)
+        self.tasks.saveStepsToActive(json_steps)
         self._updateLabels()
 
     def getItemRow(self, item):

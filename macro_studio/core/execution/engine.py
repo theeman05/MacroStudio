@@ -25,7 +25,7 @@ class MacroStudio:
         # Connect Listeners
         self.ui.start_signal.connect(self.startExecution)
         self.ui.pause_signal.connect(self.pauseExecution)
-        self.ui.stop_signal.connect(self._handleStopSignal)
+        self.ui.stop_signal.connect(self.cancelExecution)
         self._manager.finished_signal.connect(lambda: self.cancelExecution(True))
 
     def addVar(self, key: Hashable, data_type: CaptureMode | type, default_val: object=None, pick_hint: str=None):
@@ -123,11 +123,6 @@ class MacroStudio:
             delay: The delay in seconds.
         """
         self._manager.loop_delay = delay
-
-    def _handleStopSignal(self, killed: bool):
-        self.cancelExecution()
-        # Save vars on program killed
-        if killed: self._profile.save()
 
     def cancelExecution(self, completed=False):
         """Cancel currently executing tasks."""
