@@ -390,7 +390,7 @@ class RecorderTab(QWidget):
         if record is None: record = not was_recording
         # Prevent double starting or stopping
         if record == was_recording: return
-        # Don't allow if trying to record and tab is not [visible or enabled]
+        # Don't allow if trying to record and tab is not [visible or is_enabled]
         if record and not (self.isVisible() and self.isEnabled()): return
 
         if record:

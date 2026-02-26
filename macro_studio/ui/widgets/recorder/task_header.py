@@ -1,23 +1,26 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QLabel, QLineEdit, QDialog, QScrollArea, QFrame, QMenu, QComboBox,
-    QMessageBox, QFileDialog, QCheckBox
-)
+                               QLabel, QLineEdit, QDialog, QScrollArea, QFrame, QMenu, QComboBox,
+                               QMessageBox, QFileDialog
+                               )
 from PySide6.QtCore import Qt, QPoint, QEvent, Signal
 from PySide6.QtGui import QCursor
 
 from macro_studio.ui.shared import HoverButton, createIconLabel, IconColor
 
 if TYPE_CHECKING:
-    from macro_studio.core.data import TaskStore
+    from macro_studio.core.data import TaskStore, TaskModel
+
 
 class TaskRowWidget(QWidget):
-    def __init__(self, name, parent_popup):
+    def __init__(self, task_model: Optional["TaskModel"], parent_popup):
         super().__init__()
-        self.is_adding = name is None
+        # If task_model is None, we are in "Adding" mode
+        self.is_adding = task_model is None
+        self.task_id = task_model.id if task_model else None
+        self.name = task_model.name if task_model else ""
 
-        self.name = name
         self.parent_popup = parent_popup
         self.setFixedHeight(40)
 
@@ -29,11 +32,11 @@ class TaskRowWidget(QWidget):
         layout.addWidget(createIconLabel("ph.file"))
 
         # 2. Name Label
-        self.name_label = QLabel(name)
+        self.name_label = QLabel(self.name)
         layout.addWidget(self.name_label)
 
         # 3. Name Edit (Initially Hidden)
-        self.name_edit = QLineEdit(name or "")
+        self.name_edit = QLineEdit(self.name)
         self.name_edit.hide()
         # Connect signals for saving
         self.name_edit.editingFinished.connect(self.attemptRename)
@@ -51,6 +54,13 @@ class TaskRowWidget(QWidget):
         self.dots_btn.hide()
         layout.addWidget(self.dots_btn)
 
+    def updateModel(self, task_model: "TaskModel"):
+        """Updates the widget after a temp task is finalized or renamed"""
+        self.task_id = task_model.id
+        self.name = task_model.name
+        self.name_label.setText(self.name)
+        self.name_edit.setText(self.name)
+
     def enterEvent(self, event):
         self.dots_btn.show()
         self.setStyleSheet(f"color: {IconColor.SELECTED};")
@@ -63,8 +73,10 @@ class TaskRowWidget(QWidget):
 
     def mousePressEvent(self, event):
         if self.name_edit.isVisible(): return
+        if self.is_adding: return  # Can't select a task being created
+
         if event.button() == Qt.MouseButton.LeftButton:
-            self.parent_popup.selectTask(self.name)
+            self.parent_popup.selectTask(self.task_id)
         elif event.button() == Qt.MouseButton.RightButton:
             self.showContextMenu()
 
@@ -77,6 +89,8 @@ class TaskRowWidget(QWidget):
         return super().eventFilter(source, event)
 
     def showContextMenu(self):
+        if self.is_adding: return
+
         menu = QMenu(self)
 
         act_rename = menu.addAction("Rename")
@@ -88,13 +102,13 @@ class TaskRowWidget(QWidget):
         menu.addSeparator()
 
         act_del = menu.addAction("Delete")
-        act_del.triggered.connect(lambda: self.parent_popup.deleteTask(self.name))
+        act_del.triggered.connect(lambda: self.parent_popup.deleteTask(self.task_id, self.name))
 
         menu.exec(QCursor.pos())
 
     def enableRenameMode(self):
         self.name_label.hide()
-        self.name_edit.setText(self.name or " ")
+        self.name_edit.setText(self.name or "")
         self.name_edit.show()
         self.name_edit.setFocus()
         self.name_edit.selectAll()
@@ -139,6 +153,7 @@ class TaskRowWidget(QWidget):
         else:
             self.parent_popup.scroll_layout.removeWidget(self)
             self.deleteLater()
+
 
 class TaskSelectorPopup(QDialog):
     def __init__(self, task_store: "TaskStore", parent_header):
@@ -193,9 +208,9 @@ class TaskSelectorPopup(QDialog):
         self.scroll_layout.setSpacing(2)
         self.scroll_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        # Initial Build
-        for t in task_store.tasks:
-            self.addTaskWidget(t.name)
+        # Initial Build - Iterate values() for dictionary
+        for t in task_store.tasks.values():
+            self.addTaskWidget(t)
 
         scroll.setWidget(self.scroll_content)
         layout.addWidget(scroll)
@@ -203,27 +218,32 @@ class TaskSelectorPopup(QDialog):
 
     # --- Core Logic ---
 
-    def addTaskWidget(self, task_name):
-        """Creates the widget and registers it in our map."""
-        widget = TaskRowWidget(task_name, self)
+    def addTaskWidget(self, task_model: "TaskModel"):
+        """Creates the widget and registers it in our list."""
+        widget = TaskRowWidget(task_model, self)
         self.rows_list.append(widget)
-
         # Note: We don't add to layout here, refresh_view handles that
         return widget
 
     def createTempTask(self):
+        """Creates a temporary widget (not in store yet)"""
         widget = TaskRowWidget(None, self)
         self.scroll_layout.insertWidget(0, widget)
         widget.enableRenameMode()
 
     def finalizeTempTask(self, widget: TaskRowWidget):
+        """Called when a temp task is named. Creates it in store."""
+        # Create in store
+        new_task = self.tasks.createTask(widget.name)
+        # Update widget with new ID
+        widget.updateModel(new_task)
+
         self.rows_list.append(widget)
-        self.tasks.createTask(widget.name)
         self.refreshView()
 
     def duplicateTask(self, task_name):
         if duped_task := self.tasks.duplicate_task(task_name):
-            self.addTaskWidget(duped_task.name)
+            self.addTaskWidget(duped_task)
             self.refreshView()
 
     def renameTask(self, old_name, new_name):
@@ -232,38 +252,41 @@ class TaskSelectorPopup(QDialog):
         Returns (True, None) on success.
         Returns (False, ErrorMessage) on failure.
         """
-        task_match = None
-        for task in self.tasks.tasks:
-            if task.name == old_name:
-                task_match = task
-            elif task.name == new_name:
-                return False, "Task name already exists"
+        is_valid, msg = self.tasks.validateRename(new_name, old_name)
+        if not is_valid:
+            return False, msg
 
+        # Retrieve the task object to update
         if old_name:
-            # If there is no old name, we are creating a new one
-            if not task_match:
+            task = self.tasks.getTaskByName(old_name)
+            if not task:
                 return False, "Original task not found"
 
-            self.tasks.updateTaskName(task_match, new_name)
+            self.tasks.updateTaskName(task, new_name)
 
         # Update Parent Header (if it was selected)
-        if task_match == self.tasks.getActiveTask():
+        active_task = self.tasks.getActiveTask()
+        if active_task and active_task.name == new_name:
             self.parent_header.updateTaskDisplay()
 
         return True, None
 
-    def deleteTask(self, task_name):
+    def deleteTask(self, task_id, task_name):
         reply = QMessageBox.question(
             self, "Delete Task",
             f"Are you sure you want to delete '{task_name}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
-            active_idx = self.tasks.getActiveTaskIdx()
-            popped_task = self.tasks.popTask(active_idx)
+            popped_task = self.tasks.popTask(task_id)
             if popped_task:
-                self.scroll_layout.removeWidget(self.rows_list.pop(active_idx))
-                if popped_task.name == task_name:
+                # Remove from UI list
+                self.rows_list = [w for w in self.rows_list if w.task_id != task_id]
+                self.refreshView()
+
+                # Update parent if we deleted the active one
+                active_id = self.tasks.getActiveId()
+                if active_id is None or active_id != task_id:
                     self.parent_header.updateTaskDisplay()
 
     def refreshView(self):
@@ -281,7 +304,7 @@ class TaskSelectorPopup(QDialog):
         sort_mode = self.sort_combo.currentText()
 
         # 2. Filter
-        visible_widgets = [w for w in self.rows_list if search_text in w.name.lower()]
+        visible_widgets = [w for w in self.rows_list if w.name and search_text in w.name.lower()]
 
         # 3. Sort
         if sort_mode == "Alphabetical (A to Z)":
@@ -289,23 +312,24 @@ class TaskSelectorPopup(QDialog):
         elif sort_mode == "Alphabetical (Z to A)":
             visible_widgets.sort(key=lambda x: x.name.lower(), reverse=True)
         elif sort_mode == "Newest First":
-            # Assuming rows_list is in creation order
-            visible_widgets.reverse()
+            # Assuming rows_list is loosely in creation order, OR we can sort by ID (higher ID = newer)
+            visible_widgets.sort(key=lambda x: x.task_id if x.task_id else 0, reverse=True)
         elif sort_mode == "Oldest First":
-            pass  # Default order
+            visible_widgets.sort(key=lambda x: x.task_id if x.task_id else 0)
 
         # 4. Re-attach to layout
         for w in visible_widgets:
             self.scroll_layout.addWidget(w)
             w.show()
 
-    def selectTask(self, task_name):
-        task_idx = self.tasks.getTaskIdx(task_name)
-        if task_idx != -1 and self.parent_header.requestTaskSwitch(task_idx):
+    def selectTask(self, task_id):
+        if task_id is not None and self.parent_header.requestTaskSwitch(task_id):
             self.accept()
+
 
 class TaskHeaderWidget(QWidget):
     saveRequested = Signal()
+
     def __init__(self, task_store: "TaskStore"):
         super().__init__()
         self.setFixedHeight(50)
@@ -327,7 +351,7 @@ class TaskHeaderWidget(QWidget):
 
         btn_layout = QHBoxLayout(self.btn_task)
         btn_layout.addStretch()
-        btn_layout.addWidget(createIconLabel("ei.chevron-down", size=(15,15)))
+        btn_layout.addWidget(createIconLabel("ei.chevron-down", size=(15, 15)))
         self.btn_task.clicked.connect(lambda: self.toggleSelectorPopup())
 
         layout.addWidget(self.btn_task)
@@ -379,8 +403,7 @@ class TaskHeaderWidget(QWidget):
     def confirmDiscardChanges(self) -> bool:
         """
         Checks for unsaved changes.
-        Returns True if it's safe to proceed (changes saved, discarded, or none existed).
-        Returns False if the action should be canceled.
+        Returns True if it's safe to proceed.
         """
         if not self.has_changes:
             return True
@@ -389,11 +412,11 @@ class TaskHeaderWidget(QWidget):
         msg_box.setWindowTitle("Unsaved Changes")
         msg_box.setText("There are changes that haven't been saved yet.")
         msg_box.setInformativeText("Do you want to save your changes?")
-        
+
         btn_save = msg_box.addButton("Save", QMessageBox.ButtonRole.AcceptRole)
         btn_discard = msg_box.addButton("Discard", QMessageBox.ButtonRole.DestructiveRole)
         msg_box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
-        
+
         msg_box.exec()
         clicked_button = msg_box.clickedButton()
 
@@ -403,16 +426,15 @@ class TaskHeaderWidget(QWidget):
         elif clicked_button == btn_discard:
             self.setModified(False)  # Discard changes
             return True
-        
+
         return False
 
-    def requestTaskSwitch(self, new_task_idx):
+    def requestTaskSwitch(self, new_task_id):
         """
-        Attempts to switch to a new task, handling unsaved changes.
-        Returns True if switch successful, False if cancelled.
+        Attempts to switch to a new task (by ID), handling unsaved changes.
         """
         if self.confirmDiscardChanges():
-            self.tasks.setActiveTask(new_task_idx)
+            self.tasks.setActiveId(new_task_id)
             self.updateTaskDisplay()
             return True
         return False
@@ -420,7 +442,7 @@ class TaskHeaderWidget(QWidget):
     def updateTaskDisplay(self):
         active_task = self.tasks.getActiveTask()
         self.btn_task.setText(f'"{active_task.name if active_task else "New Task"}"')
-        self.has_changes = False # Reset changes on new task load
+        self.has_changes = False  # Reset changes on new task load
 
     def toggleSelectorPopup(self, show=None):
         current_popup = self.task_selector
@@ -449,10 +471,10 @@ class TaskHeaderWidget(QWidget):
         act_import.triggered.connect(self.onImport)
 
         menu.addSeparator()
-        
+
         act_rename = menu.addAction("Rename")
         act_rename.triggered.connect(self.enableRenameMode)
-        
+
         act_dup = menu.addAction("Duplicate")
         act_dup.triggered.connect(self.onDuplicate)
 
@@ -460,7 +482,7 @@ class TaskHeaderWidget(QWidget):
         act_export.triggered.connect(self.onExport)
 
         menu.addSeparator()
-        
+
         act_del = menu.addAction("Delete")
         act_del.triggered.connect(self.onDelete)
 
@@ -534,7 +556,6 @@ class TaskHeaderWidget(QWidget):
     # --- Menu Actions ---
 
     def onAdd(self):
-        # Doesn't add a new one until task_name_edit is set
         self.toggleSelectorPopup(False)
 
         if not self.confirmDiscardChanges():
@@ -561,7 +582,7 @@ class TaskHeaderWidget(QWidget):
         if not self.confirmDiscardChanges():
             return
 
-        if self.tasks.duplicate_task():
+        if self.tasks.duplicateTask():
             self.updateTaskDisplay()
 
     def onDelete(self):
@@ -569,11 +590,11 @@ class TaskHeaderWidget(QWidget):
         if not active_task: return
 
         reply = QMessageBox.question(
-            self, "Delete Task", 
+            self, "Delete Task",
             f"Are you sure you want to delete '{active_task.name}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
 
         if reply == QMessageBox.StandardButton.Yes:
-            self.tasks.popTask()
+            self.tasks.popTask()  # Defaults to active ID
             self.updateTaskDisplay()

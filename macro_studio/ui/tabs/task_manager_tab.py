@@ -1,7 +1,8 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QScrollArea
 from PySide6.QtCore import QTimer
 
-from macro_studio.ui.widgets.task_row_widget import TaskRowWidget
+from macro_studio.ui.widgets.task_manager.task_row_widget import TaskRowWidget
+from macro_studio.ui.widgets.task_manager.manager_header import ManagerHeader
 
 
 class TaskManagerTab(QWidget):
@@ -10,6 +11,10 @@ class TaskManagerTab(QWidget):
         self.manager = manager
 
         self.main_layout = QVBoxLayout(self)
+        self.main_layout.setSpacing(0)
+
+        self.header = ManagerHeader()
+
         self.scroll_area = QScrollArea()
 
         self.scroll_area.setWidgetResizable(True)
@@ -22,6 +27,7 @@ class TaskManagerTab(QWidget):
         self.tasks_layout.addStretch()
 
         self.scroll_area.setWidget(self.scroll_widget)
+        self.main_layout.addWidget(self.header)
         self.main_layout.addWidget(self.scroll_area)
 
         self.task_rows = {}

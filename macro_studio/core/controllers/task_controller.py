@@ -34,12 +34,12 @@ class TaskController:
             task_args: tuple = (),  # Default to empty tuple
             task_kwargs: dict = None  # Default to None for mutable safety
     ):
+        self.worker = manager.worker
+        self.manager = manager
         self.func = task_func
         self.repeat = repeat
         self.state_change_by_worker = False
         self.context = self._createContext()
-        self.worker = manager.worker
-        self.manager = manager
         self.name = unique_name or task_id
 
         self._state = TaskState.RUNNING if is_enabled else TaskState.STOPPED

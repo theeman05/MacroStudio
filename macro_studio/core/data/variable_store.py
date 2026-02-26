@@ -61,7 +61,7 @@ class VariableStore(QObject):
         key_str = VariableConfig.keyToStr(key)
         if key_str in self:
             config = self._vars.pop(key_str)
-            with self.db.get_connection() as conn:
+            with self.db.getConn() as conn:
                 conn.execute("DELETE FROM variables WHERE profile_id = ? AND key = ?",
                              (self._profile_id, key_str))
                 conn.commit()
@@ -87,7 +87,7 @@ class VariableStore(QObject):
         config = self._vars[key_str]
         config.value = new_value
         val_str = config.valToStr()
-        with self.db.get_connection() as conn:
+        with self.db.getConn() as conn:
             conn.execute("UPDATE variables SET value = ? WHERE profile_id = ? AND key = ?",
                          (val_str, self._profile_id, key_str))
             conn.commit()
@@ -98,7 +98,7 @@ class VariableStore(QObject):
         """Helper to insert or replace a record."""
         type_str = config.data_type.__name__
         val_str = config.valToStr()
-        with self.db.get_connection() as conn:
+        with self.db.getConn() as conn:
             conn.execute("""
                          INSERT INTO variables (profile_id, key, value, data_type, hint)
                          VALUES (?, ?, ?, ?, ?)
@@ -122,7 +122,7 @@ class VariableStore(QObject):
 
     def load(self):
         self._vars.clear()
-        with self.db.get_connection() as conn:
+        with self.db.getConn() as conn:
             rows = conn.execute("SELECT * FROM variables WHERE profile_id = ?", (self._profile_id,))
             for row in rows:
                 config = VariableConfig.fromRow(row)
