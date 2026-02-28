@@ -145,7 +145,7 @@ class DroppableTimelineWidget(QListWidget):
         self.empty_state = EmptyStateWidget(self.viewport())
         self.empty_state.setupState(
             icon_name="ph.film-strip",
-            title="Timeline is empty",
+            title="Timeline is Empty",
             subtitle="Drag actions from the palette to start building your task"
         )
 

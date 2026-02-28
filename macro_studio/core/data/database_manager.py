@@ -56,8 +56,15 @@ class DatabaseManager:
         return cls._instance
 
     def getConn(self):
-        db_path = os.path.join(os.getcwd(), self.DB_NAME)
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        if os.name == 'nt':  # Windows
+            base_dir = os.getenv('APPDATA')
+        else:
+            base_dir = os.path.expanduser('~/.config')
+
+        app_dir = os.path.join(base_dir, "MacroStudio")
+        os.makedirs(app_dir, exist_ok=True)
+        db_path = os.path.join(app_dir, self.DB_NAME)
+
         conn = sqlite3.connect(db_path)
         conn.execute("PRAGMA foreign_keys = ON;")
         conn.row_factory = sqlite3.Row

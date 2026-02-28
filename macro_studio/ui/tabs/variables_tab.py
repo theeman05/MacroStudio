@@ -77,7 +77,7 @@ class VariablesTab(QWidget):
         self.empty_state = EmptyStateWidget()
         self.empty_state.setupState(
             icon_name="msc.variable-group",
-            title="No variables yet",
+            title="No Variables Yet",
             subtitle="Click below to create your first variable",
             btn_text="Create Variable"
         )

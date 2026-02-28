@@ -20,7 +20,7 @@ def _handleTasksOnHard(controller: "TaskController", notified_tasks: set):
     notified_tasks.add(controller)
     if not controller.isInterrupted():
         # Throw if not in notified already
-        return was_in_notified or controller.throwInterruptedError(True)
+        return was_in_notified or not controller.isAlive() or controller.throwInterruptedError(True)
     return controller.isAlive()
 
 class TaskWorker(QThread):
@@ -137,7 +137,9 @@ class TaskWorker(QThread):
             controller.stop(by_worker=True)
 
         for entry in active_snapshot:
-            entry[3].stop(by_worker=True)
+            controller = entry[3]
+            if controller.isAlive():
+                controller.stop(by_worker=True)
 
     def _onRunEnd(self):
         # Handle when run loop ends

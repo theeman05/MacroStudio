@@ -52,7 +52,7 @@ class MacroStudio:
         var_config = self._profile.vars.get(key)
         return var_config and var_config.value or None
 
-    def addRunTask(self, task_func: TaskFunc, *args, enabled=True, repeat=False, **kwargs) -> Controller:
+    def addBasicTask(self, task_func: TaskFunc, *args, enabled=True, repeat=False, **kwargs) -> Controller:
         """
         Add a basic task function to run when executing macros.
         Args:

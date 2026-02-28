@@ -399,7 +399,7 @@ class SelectorPopup(QDialog):
             if search_text:
                 self.empty_state.setupState(
                     "ph.magnifying-glass",
-                    "No matches found",
+                    "No Matches Found",
                     f"We couldn't find anything for '{search_text}'"
                 )
             elif self.isReadOnly():

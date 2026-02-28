@@ -86,6 +86,6 @@ def runSafeTask(controller: Controller):
 if __name__ == '__main__':
     studio = MacroStudio("Database Updater Macro")
 
-    studio.addRunTask(runSafeTask)
+    studio.addBasicTask(runSafeTask)
 
     studio.launch()

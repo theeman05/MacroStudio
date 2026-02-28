@@ -20,7 +20,7 @@ class TaskManagerTab(QWidget):
         self.main_window = main_window
 
         self.task_selector = SelectorPopup(parent=self, read_only=True)
-        self.task_selector.empty_state.default_title = "No tasks available"
+        self.task_selector.empty_state.default_title = "No Tasks Available"
         self.task_selector.empty_state.default_action_txt = "View Recorder Tab"
         self.task_selector.addSortMode("Alphabetical (A to Z)", lambda t: t.name.lower())
         self.task_selector.addSortMode("Alphabetical (Z to A)", lambda t: t.name.lower(), reverse=True)
@@ -114,7 +114,11 @@ class TaskManagerTab(QWidget):
                 if isinstance(controller.name, str):
                     new_row.removeRequested.connect(self._onRequestDelete)
 
+        search_text = self.header.search_bar.text().lower().strip()
+
         stale_keys = []
+        visible_count = 0
+
         for task_key, row_widget in self.task_rows.items():
             if task_key not in active_controllers:
                 # The task was removed from the engine. Destroy the UI row.
@@ -122,13 +126,36 @@ class TaskManagerTab(QWidget):
                 row_widget.deleteLater()
                 stale_keys.append(task_key)
             else:
-                # The task still exists. Trigger its color/button update!
+                controller = active_controllers[task_key]
                 row_widget.updateUi()
 
-        if not self.task_rows:
-            self.empty_state.show()
-        else:
-            self.empty_state.hide()
+                # Simulate the UI prefix to ensure "Task " searches match properly
+                display_name = f"task {str(controller.name).lower()}"
+
+                # Filter visibility
+                if search_text in display_name:
+                    row_widget.show()
+                    visible_count += 1
+                else:
+                    row_widget.hide()
 
         for key in stale_keys:
             del self.task_rows[key]
+
+        if not active_controllers:
+            # The list is completely empty
+            self.empty_state.defaultState(
+                subtitle="There are no tasks to display",
+                btn_text="Add Recorded Task"
+            )
+            self.empty_state.show()
+        elif visible_count == 0:
+            # Tasks exist, but the search filtered them all out
+            self.empty_state.setupState(
+                icon_name="ph.magnifying-glass",
+                title="No Matches Found",
+                subtitle=f"We couldn't find any tasks named '{self.header.search_bar.text()}'"
+            )
+            self.empty_state.show()
+        else:
+            self.empty_state.hide()

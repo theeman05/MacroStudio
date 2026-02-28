@@ -23,10 +23,10 @@ class BasicMacro:
 
         # Register the tasks so the engine knows about them.
         # We store the controller for 'anotherTask' so we can manipulate it later.
-        self.other_task_ctrl = studio.addRunTask(anotherTask)
+        self.other_task_ctrl = studio.addBasicTask(anotherTask)
 
         # Register our main coordination task
-        studio.addRunTask(self.mainCoordinator)
+        studio.addBasicTask(self.mainCoordinator)
 
     def mainCoordinator(self, controller: Controller):
         """
