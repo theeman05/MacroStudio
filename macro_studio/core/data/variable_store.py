@@ -8,6 +8,16 @@ from macro_studio.core.registries.capture_type_registry import GlobalCaptureRegi
 if TYPE_CHECKING:
     from .database_manager import DatabaseManager
 
+
+def copyVarsToNewProfile(cursor, old_profile_id, new_profile_id):
+    cursor.execute("""
+                   INSERT INTO variables (profile_id, key, value, data_type, hint)
+                   SELECT ?, key, value, data_type, hint
+                   FROM variables
+                   WHERE profile_id = ?
+                   """, (new_profile_id, old_profile_id))
+
+
 class VariableStore(QObject):
     """Variables are localized to the profile"""
     varAdded = Signal(str, object) # (key string, config)

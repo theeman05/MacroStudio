@@ -4,8 +4,10 @@ from dataclasses import dataclass
 from PySide6.QtCore import QObject, Signal
 
 from .task_store import TaskStore, TaskModel
-from .variable_store import VariableStore
+from .variable_store import VariableStore, copyVarsToNewProfile
 from .database_manager import DatabaseManager
+
+from macro_studio.core.utils import generateUniqueName
 
 @dataclass
 class TaskRelationship:
@@ -82,6 +84,41 @@ class Profile(QObject):
                 return False
 
         return True
+
+    def duplicateProfile(self, profile_name):
+        if profile_name not in self.profile_names: return None
+        new_name = generateUniqueName(self.profile_names, profile_name)
+
+        with self.db.getConn() as conn:
+            cursor = conn.cursor()
+
+            # Select original profile's id
+            cursor.execute("SELECT id FROM profiles WHERE name = ?", (profile_name,))
+            row = cursor.fetchone()
+            if not row: return None
+            original_id = row["id"]
+
+            # Create new profile and grab that ID
+            cursor.execute("INSERT INTO profiles (name) VALUES (?)", (new_name,))
+            new_id = cursor.lastrowid
+
+            # Copy relationships
+            cursor.execute("""
+                           INSERT INTO profile_tasks (profile_id, task_id, repeat, is_enabled)
+                           SELECT ?, task_id, repeat, is_enabled
+                           FROM profile_tasks
+                           WHERE profile_id = ?
+                           """, (new_id, original_id))
+
+            # Copy variables
+            copyVarsToNewProfile(cursor, original_id, new_id)
+
+            conn.commit()
+
+        self.profile_names.add(new_name)
+
+        return new_name
+
 
     def createRelationship(self, task_id, repeat=False, enabled=True):
         if task_id in self.task_relationships: return

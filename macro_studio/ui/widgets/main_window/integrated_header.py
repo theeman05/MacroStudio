@@ -8,7 +8,6 @@ from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QFrame, QPushButton
 from macro_studio.core.types_and_enums import WorkerState
 from macro_studio.ui.shared import StatefulHoverButton, HoverButton, setBtnState, IconColor
 from macro_studio.ui.widgets.standalone.selector import EditableSelectorDropdown
-from macro_studio.core.utils import generateUniqueName
 
 if TYPE_CHECKING:
     from macro_studio.core.data import Profile
@@ -113,8 +112,8 @@ class IntegratedHeader(QWidget):
         event.accept(new_name)
 
     def _onDuplicateRequested(self, profile_name, event: "ApprovalEvent"):
-        new_name = generateUniqueName(self.profile.profile_names, profile_name)
-        if not self.profile.createProfile(new_name):
+        new_name = self.profile.duplicateProfile(profile_name)
+        if not new_name:
             event.ignore("Name already exists")
             return
 
