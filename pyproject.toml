@@ -1,6 +1,6 @@
 [project]
 name = "macro-studio"
-version = "0.1.0"
+dynamic = ["version"]
 description = "A local desktop automation tool"
 dependencies = [
     "PySide6",
@@ -14,6 +14,9 @@ dependencies = [
     "qtawesome",
     "shiboken6"
 ]
+
+[tool.setuptools.dynamic]
+version = {attr = "macro_studio.version.__version__"}
 
 [tool.setuptools.package-data]
 "macro_studio" = ["*", "**/*"]

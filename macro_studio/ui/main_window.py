@@ -1,6 +1,4 @@
-import ctypes
-import os
-import uuid, sys, signal
+import uuid, sys, signal, ctypes, os
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -13,6 +11,7 @@ from pynput import keyboard
 
 from macro_studio.core.types_and_enums import LogPacket, LogLevel, LogErrorPacket, WorkerState
 from macro_studio.core.utils import global_logger
+from macro_studio.version import __version__
 from .tabs.recorder_tab import RecorderTab
 from .tabs.task_manager_tab import TaskManagerTab
 from .theme_manager import ThemeManager
@@ -57,7 +56,7 @@ class MainWindow(QMainWindow):
 
         self.app = QApplication(sys.argv)
         super().__init__()
-        self.setWindowTitle(f"Macro Studio")
+        self.setWindowTitle(f"Macro Studio v{__version__}")
         self.resize(*DEFAULT_SIZE)
         self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint)
         self._setIcon()

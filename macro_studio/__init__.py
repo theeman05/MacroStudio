@@ -1,3 +1,4 @@
+from .version import __version__
 from macro_studio.core.execution.engine import MacroStudio
 from macro_studio.api.task_context import TaskContext as Controller
 from macro_studio.api.thread_context import ThreadContext as ThreadController
