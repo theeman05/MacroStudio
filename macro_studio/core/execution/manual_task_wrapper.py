@@ -48,14 +48,13 @@ class ManualTaskWrapper:
         self.step_idx = 0
         self.inputs_pending_release = set() # Set of inputs that had a partner
         self.active_solo_inputs = set() # Set of inputs to release upon task completion without partners
-        self.model = model
         self.updateModel(model)
 
     def updateModel(self, model: "TaskModel"):
-        self.model = model
         self.steps.clear()
+
         for raw_step in model.steps:
-            step = TimelineStep.fromDict(raw_step)
+            step = TimelineStep.fromJson(raw_step)
             # Translate mouse and key stuff to pydirectinput
             if step.action_type == ActionType.MOUSE:
                 button, pos = step.value

@@ -9,6 +9,7 @@ EMPTY_VALUE_STR = "<Empty>"
 
 class IconColor:
     DEFAULT = "#E7E7E7"
+    DEFAULT_HOVER = "#FFFFFF"
     DISABLED = "#606060"
     DISABLED_HOVER = "#929292"
     SELECTED = "#1158c7"
@@ -184,17 +185,20 @@ def setBtnState(btn, state_value: str | Enum):
     btn.style().polish(btn)
 
 def createIconLabel(icon_name: str, color: str=IconColor.DEFAULT, size=(30,30)):
-    size_x, size_y = size
     lbl_icon = QLabel()
-    lbl_icon.setFixedSize(size_x, size_y)
-    lbl_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    lbl_icon.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+    updateLabelIcon(lbl_icon, icon_name, color, size)
+
+    return lbl_icon
+
+def updateLabelIcon(lbl: QLabel, icon_name: str, color: str=IconColor.DEFAULT, size=(30,30)):
+    size_x, size_y = size
+    lbl.setFixedSize(size_x, size_y)
+    lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
 
     icon_obj = qta.icon(icon_name, color=color)
     pixmap = icon_obj.pixmap(size_x - 5, size_y - 5)
-    lbl_icon.setPixmap(pixmap)
-
-    return lbl_icon
+    lbl.setPixmap(pixmap)
 
 def _resetStyle(item, origin_style):
     item.setStyleSheet(origin_style)

@@ -41,7 +41,7 @@ class ThreadMacro:
 
         # Add run tasks to the creator
         self.thread_task_controller = creator.addThreadTask(_taskInThread)
-        self.pauser_controller = creator.addRunTask(self.threadHardPauser)
+        self.pauser_controller = creator.addBasicTask(self.threadHardPauser)
 
     def threadHardPauser(self, controller):
         # Let's attempt to interrupt the threaded task!

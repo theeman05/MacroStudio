@@ -158,3 +158,8 @@ class VariableTableModel(QAbstractTableModel):
     def getConfigAtRow(self, row: int) -> Union["VariableConfig", None]:
         """Returns the full config object for the given row."""
         return self.getNameAndConfig(row)[1]
+
+    def completelyRefresh(self):
+        self.beginResetModel()
+        self._keys_cache = list(self.store.keys())
+        self.endResetModel()

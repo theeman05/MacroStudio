@@ -1,0 +1,134 @@
+import sqlite3, os
+from macro_studio.core.utils.logger import global_logger
+
+
+def _setupTriggers(cursor):
+    """Initializes all database triggers at once."""
+    cursor.executescript("""
+        -- Profile Tasks Triggers
+        CREATE TRIGGER IF NOT EXISTS trg_profile_tasks_insert
+        AFTER INSERT ON profile_tasks
+        BEGIN
+            UPDATE profiles SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.profile_id;
+        END;
+    
+        CREATE TRIGGER IF NOT EXISTS trg_profile_tasks_update
+        AFTER UPDATE ON profile_tasks
+        BEGIN
+            UPDATE profiles SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.profile_id;
+        END;
+    
+        CREATE TRIGGER IF NOT EXISTS trg_profile_tasks_delete
+        AFTER DELETE ON profile_tasks
+        BEGIN
+            UPDATE profiles SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.profile_id;
+        END;
+    
+        -- Variables Triggers
+        CREATE TRIGGER IF NOT EXISTS trg_variables_insert
+        AFTER INSERT ON variables
+        BEGIN
+            UPDATE profiles SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.profile_id;
+        END;
+    
+        CREATE TRIGGER IF NOT EXISTS trg_variables_update
+        AFTER UPDATE ON variables
+        BEGIN
+            UPDATE profiles SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.profile_id;
+        END;
+    
+        CREATE TRIGGER IF NOT EXISTS trg_variables_delete
+        AFTER DELETE ON variables
+        BEGIN
+            UPDATE profiles SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.profile_id;
+        END;
+    """)
+
+
+class DatabaseManager:
+    _instance = None
+    DB_NAME = "macro_studio.db"
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(DatabaseManager, cls).__new__(cls)
+            cls._instance.initDB()
+        return cls._instance
+
+    def getConn(self):
+        if os.name == 'nt':  # Windows
+            base_dir = os.getenv('APPDATA')
+        else:
+            base_dir = os.path.expanduser('~/.config')
+
+        app_dir = os.path.join(base_dir, "MacroStudio")
+        os.makedirs(app_dir, exist_ok=True)
+        db_path = os.path.join(app_dir, self.DB_NAME)
+
+        conn = sqlite3.connect(db_path)
+        conn.execute("PRAGMA foreign_keys = ON;")
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def initDB(self):
+        """Create tables if they don't exist."""
+        conn = self.getConn()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                            CREATE TABLE IF NOT EXISTS profiles (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                name TEXT UNIQUE NOT NULL,
+                                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                            )
+                           """)
+
+            cursor.execute("""
+                            CREATE TABLE IF NOT EXISTS tasks (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                name TEXT,
+                                steps TEXT,
+                                duration_ms INTEGER,
+                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                            )
+                           """)
+
+            cursor.execute("""
+                            CREATE TABLE IF NOT EXISTS profile_tasks (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                profile_id INTEGER NOT NULL,
+                                task_id INTEGER NOT NULL,
+                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                
+                                repeat BOOLEAN DEFAULT 0,
+                                is_enabled BOOLEAN DEFAULT 1,
+
+                                FOREIGN KEY(profile_id) REFERENCES profiles(id) ON DELETE CASCADE,
+                                FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+                                UNIQUE(profile_id, task_id)
+                            )
+                           """)
+
+            cursor.execute("""
+                            CREATE TABLE IF NOT EXISTS variables (
+                                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                 profile_id INTEGER,
+                                 key TEXT,
+                                 value TEXT,
+                                 data_type TEXT,
+                                 hint TEXT,
+                                 FOREIGN KEY(profile_id) REFERENCES profiles(id) ON DELETE CASCADE
+                                 UNIQUE(profile_id, key)
+                            )
+                           """)
+
+            _setupTriggers(cursor)
+
+            conn.commit()
+        except Exception as e:
+            print("INIT ERROR", e)
+            global_logger.logError(f"Database Init Error: {e}")
+        finally:
+            conn.close()
+

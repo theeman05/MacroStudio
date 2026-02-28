@@ -1,11 +1,13 @@
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QSizePolicy, QWidget, QGridLayout
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QCursor
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QSizePolicy, QWidget, QGridLayout, QMenu, QMessageBox
 
 from macro_studio.core.controllers.task_controller import TaskState
 from macro_studio.ui.shared import ToggleHoverButton, HoverButton, IconColor
 from macro_studio.core.controllers.threaded_controller import ThreadedController
+from macro_studio.ui.widgets.standalone.approval_event import ApprovalEvent
 
 if TYPE_CHECKING:
     from macro_studio.core.controllers.task_controller import TaskController
@@ -36,6 +38,8 @@ class CircularStatusLabel(QLabel):
 
 
 class TaskRowWidget(QFrame):
+    removeRequested = Signal(object) # controller
+
     def __init__(self, controller: "TaskController"):
         super().__init__()
         self.controller = controller
@@ -65,7 +69,7 @@ class TaskRowWidget(QFrame):
 
     def setupLayout(self):
         main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(12, 8, 12, 8)
+        main_layout.setContentsMargins(12, 4, 12, 8)
         main_layout.setSpacing(10)
 
         status_widget = QWidget()
@@ -152,6 +156,18 @@ class TaskRowWidget(QFrame):
         else:
             self.controller.pause()
 
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.RightButton and isinstance(self.controller.name, str):
+            self.showContextMenu()
+
+    def showContextMenu(self):
+        menu = QMenu(self)
+        menu.addAction("Remove").triggered.connect(self._requestDelete)
+        menu.exec(QCursor.pos())
+
+    def _requestDelete(self):
+        self.removeRequested.emit(self.controller)
+
     def updateUi(self):
         is_alive = self.controller.isAlive()
         is_paused = self.controller.isPaused()
@@ -179,13 +195,13 @@ class TaskRowWidget(QFrame):
                 display_text = "Interrupted (Waiting for Engine)"
             state_color = "#F46800"
 
-        elif current_state == TaskState.PAUSED or worker_paused:
-            display_text = "Paused" if not worker_paused else "Paused (Waiting for Engine)"
-            state_color = "#FFC300"
-
         elif current_state == TaskState.CRASHED:
             display_text = "Crashed"
             state_color = "#f44336"
+
+        elif current_state == TaskState.PAUSED or worker_paused:
+            display_text = "Paused" if not worker_paused else "Paused (Waiting for Engine)"
+            state_color = "#FFC300"
 
         elif not worker_running:
             display_text = "Ready (Waiting for Engine)"

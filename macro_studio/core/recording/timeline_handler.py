@@ -1,4 +1,4 @@
-import bisect
+import bisect, json
 from dataclasses import dataclass
 from enum import Enum
 from PySide6.QtCore import QObject, Signal, QPoint
@@ -36,13 +36,16 @@ class TimelineStep:
     detail: int=None # 1 means press, 2 means release
     partner_idx: int | None=None
 
-    def toDict(self):
+    def _toDict(self):
         master = {"action_type": self.action_type.name}
         GlobalTypeHandler.setIfEvals("value", self._getSerialValue(), master)
         GlobalTypeHandler.setIfEvals("detail", self.detail, master)
         GlobalTypeHandler.setIfEvals("partner_idx", self.partner_idx, master, strict_eval=True)
 
         return master
+
+    def toJson(self) -> str:
+        return json.dumps(self._toDict(), default=str)
 
     def _getSerialValue(self):
         # Yeah, this isn't a great way to do it, but oh well.
@@ -51,7 +54,8 @@ class TimelineStep:
         return self.value
 
     @staticmethod
-    def fromDict(step_data):
+    def fromJson(json_str):
+        step_data = json.loads(json_str)
         step = TimelineStep(**step_data)
         step.action_type = ActionType[step_data['action_type']]
         if step.action_type == ActionType.MOUSE:
@@ -128,7 +132,7 @@ class TimelineModel(QObject):
         new_steps = []
         self._steps = new_steps
         for i, step_data in enumerate(steps):
-            step = TimelineStep.fromDict(step_data)
+            step = TimelineStep.fromJson(step_data)
             new_steps.append(step)
             self.stepAdded.emit(i, step)
 

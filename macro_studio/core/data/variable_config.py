@@ -19,18 +19,7 @@ class VariableConfig:
         self.value = default_val
         self.hint = pick_hint
 
-    @classmethod
-    def keyToStr(cls, key: Hashable):
-        """Converts the given key to a compatible string for hashing and saving."""
-        return key.name if isinstance(key, Enum) else str(key)
-
-    def toDict(self):
-        """
-        Serializes this variable for saving.
-        Uses the GlobalTypeHandler to safely stringify complex objects.
-        """
-        type_name = self.data_type.__name__
-
+    def valToStr(self) -> str | None:
         value_str = None
         if self.value is not None:
             try:
@@ -38,19 +27,19 @@ class VariableConfig:
             except Exception as e:
                 print(f"Error serializing {self}: {e}")
 
-        serial = {"type": type_name}
+        return value_str
 
-        GlobalTypeHandler.setIfEvals("value", value_str, serial)
-        GlobalTypeHandler.setIfEvals("hint", self.hint, serial)
-
-        return serial
+    @classmethod
+    def keyToStr(cls, key: Hashable):
+        """Converts the given key to a compatible string for hashing and saving."""
+        return key.name if isinstance(key, Enum) else str(key)
 
     @staticmethod
-    def fromDict(data):
-        """Factory method to create a VariableConfig from saved JSON."""
-        type_name = data.get("type", "str")
-        value_data = data.get("value")
-        hint = data.get("hint")
+    def fromRow(row):
+        """Factory method to create a VariableConfig from a db row."""
+        type_name = row["data_type"]
+        value_data = row["value"]
+        hint = row["hint"]
 
         target_type = GlobalTypeHandler.getTypeClass(type_name)
         real_value = None
@@ -58,6 +47,6 @@ class VariableConfig:
             try:
                 real_value = GlobalTypeHandler.fromString(target_type, value_data)
             except Exception as e:
-                print(f"Error serializing deserializing value for {type_name}: {e}")
+                print(f"Error deserializing value for {type_name}: {e}")
 
         return VariableConfig(target_type, real_value, hint)

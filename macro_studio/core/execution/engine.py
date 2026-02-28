@@ -11,11 +11,9 @@ from macro_studio.api.thread_context import ThreadContext as ThreadedController
 
 
 class MacroStudio:
-    def __init__(self, macro_name: str):
-        self._profile = Profile(macro_name)
-        self._closing = False
+    def __init__(self, macro_name: str=None):
+        self._profile = Profile()
         self._manager = TaskManager(self, self._profile)
-        self._profile_name = macro_name
 
         # Setup UI stuff
         self.ui = MainWindow(self._manager, self._profile)
@@ -25,8 +23,10 @@ class MacroStudio:
         # Connect Listeners
         self.ui.start_signal.connect(self.startExecution)
         self.ui.pause_signal.connect(self.pauseExecution)
-        self.ui.stop_signal.connect(self._handleStopSignal)
+        self.ui.stop_signal.connect(self.cancelExecution)
         self._manager.finished_signal.connect(lambda: self.cancelExecution(True))
+
+        self._profile.load(macro_name or "Default")
 
     def addVar(self, key: Hashable, data_type: CaptureMode | type, default_val: object=None, pick_hint: str=None):
         """
@@ -52,7 +52,7 @@ class MacroStudio:
         var_config = self._profile.vars.get(key)
         return var_config and var_config.value or None
 
-    def addRunTask(self, task_func: TaskFunc, *args, enabled=True, repeat=False, **kwargs) -> Controller:
+    def addBasicTask(self, task_func: TaskFunc, *args, enabled=True, repeat=False, **kwargs) -> Controller:
         """
         Add a basic task function to run when executing macros.
         Args:
@@ -124,11 +124,6 @@ class MacroStudio:
         """
         self._manager.loop_delay = delay
 
-    def _handleStopSignal(self, killed: bool):
-        self.cancelExecution()
-        # Save vars on program killed
-        if killed: self._profile.save()
-
     def cancelExecution(self, completed=False):
         """Cancel currently executing tasks."""
         if not self.isRunningTasks():
@@ -195,4 +190,5 @@ class MacroStudio:
     def launch(self):
         self.ui.show()
         self.app.exit()
+
         sys.exit(self.app.exec())

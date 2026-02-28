@@ -1,72 +1,112 @@
-import re
+import json, re
 from dataclasses import dataclass
-from PySide6.QtCore import Signal
+from datetime import datetime
+from typing import TYPE_CHECKING, Dict
 
-from .base_store import BaseStore
+from PySide6.QtCore import Signal, QObject
+
 from macro_studio.core.registries.type_handler import GlobalTypeHandler
-from macro_studio.core.utils import FileIO, global_logger
+from macro_studio.core.utils import FileIO, global_logger, generateUniqueName
+
+if TYPE_CHECKING:
+    from .profile import Profile
 
 
-@dataclass
+@dataclass(eq=False)
 class TaskModel:
     name: str
-    steps: list=None
-    repeat: bool=False
-    disabled: bool=False
+    steps: list = None
+    created_at: str | datetime = None
+    duration_ms: int = 0
+    id: int = None
 
     def __post_init__(self):
         if self.steps is None: self.steps = []
+        if self.duration_ms is None: self.duration_ms = 0
 
     def toDict(self):
         serial = {"name": self.name}
-        GlobalTypeHandler.setIfEvals("repeat", self.repeat, serial)
         GlobalTypeHandler.setIfEvals("steps", self.steps, serial)
-        GlobalTypeHandler.setIfEvals("disabled", self.disabled, serial)
+        GlobalTypeHandler.setIfEvals("created_at", self.created_at, serial)
+        GlobalTypeHandler.setIfEvals("duration_ms", self.duration_ms, serial)
         return serial
 
-class TaskStore(BaseStore):
+    def dumpSteps(self) -> str | None:
+        if not self.steps: return None
+        return json.dumps(self.steps, default=str)
+
+
+class TaskStore(QObject):
+    """Tasks are globalized, available for all profiles"""
     activeStepSet = Signal()
     taskAdded = Signal(TaskModel)
-    taskRemoved = Signal(str) # (task name)
+    taskRemoved = Signal(TaskModel)  # (removed task)
     taskSaved = Signal(TaskModel)
-    taskRenamed = Signal(str, str) # (old name, new name)
+    taskRenamed = Signal(str, TaskModel)  # (old name, model with new name)
 
-    def __init__(self):
-        super().__init__("tasks")
-        self.tasks: list[TaskModel] = []
-        self._active_idx = -1
+    def __init__(self, profile: "Profile", parent=None):
+        super().__init__(parent)
+        self.profile = profile
+        self.db = profile.db
+        self.tasks: Dict[int, TaskModel] = {}
+        self._active_id: int | None = None
 
     def createTask(self, name_or_model: str | TaskModel, set_as_active=False):
-        """Creates a new task and adds it to the end of the list. Assumes the name is unique."""
+        """Creates a new task, saves to DB to get ID, then adds to store."""
         new_task = TaskModel(name=name_or_model) if isinstance(name_or_model, str) else name_or_model
-        self.tasks.append(new_task)
-        idx = len(self.tasks) - 1
+
+        steps_json = new_task.dumpSteps()
+
+        # Insert into DB first to generate the ID
+        with self.db.getConn() as conn:
+            cursor = conn.execute("""
+                                  INSERT INTO tasks (name, steps)
+                                  VALUES (?, ?)
+                                  RETURNING id, created_at
+                                  """, (new_task.name, steps_json))
+
+            row = cursor.fetchone()
+            new_task.created_at = row["created_at"]
+            new_task.id = row["id"]
+
+            conn.commit()
+
+        self.tasks[new_task.id] = new_task
+        self.profile.createRelationship(new_task.id)
+
         if set_as_active:
-            self.setActiveTask(idx)
+            self.setActiveId(new_task.id)
 
         self.taskAdded.emit(new_task)
 
         return new_task
 
-    def popTask(self, task_idx: int=None):
-        if task_idx is None:
-            task_idx = self._active_idx
+    def popTask(self, task_id: int = None):
+        """Removes a task by ID."""
+        if task_id is None:
+            task_id = self._active_id
 
-        if task_idx < 0 or task_idx >= len(self.tasks):
+        if task_id is None or task_id not in self.tasks:
             return None
 
-        task = self.tasks.pop(task_idx)
-        self.taskRemoved.emit(task.name)
+        # Remove from Dict
+        task = self.tasks.pop(task_id)
 
-        if not self.tasks: # Out of tasks
-            self._active_idx = -1
-            self.activeStepSet.emit()
-        elif task_idx < self._active_idx: # Task above active deleted
-            self._active_idx -= 1
-        elif task_idx == self._active_idx: # Deleted currently active task
-            new_idx = max(0, self._active_idx - 1)
-            self._active_idx = -1
-            self.setActiveTask(new_idx)
+        # Remove from DB
+        with self.db.getConn() as conn:
+            conn.execute("DELETE FROM tasks WHERE id = ? AND name = ?",
+                         (task.id, task.name))
+            conn.commit()
+
+        self.taskRemoved.emit(task)
+
+        # Handle Active ID switching
+        if not self.tasks:
+            # No tasks left
+            self.setActiveId(-1)
+        elif task_id == self._active_id:
+            # We deleted the active task, select some other task
+            self.setActiveId(next(iter(self.tasks), -1))
 
         return task
 
@@ -74,54 +114,92 @@ class TaskStore(BaseStore):
         old_name = task.name
         if old_name != new_name:
             task.name = new_name
-            self.taskRenamed.emit(old_name, new_name)
+            with self.db.getConn() as conn:
+                conn.execute("UPDATE tasks SET name = ? WHERE id = ? AND name = ?",
+                             (new_name, task.id, old_name))
+                conn.commit()
+            self.taskRenamed.emit(old_name, task)
 
     def _silentCreateTask(self, task):
-        self._active_idx = 0  # Silently set the task so we don't reload anything
-        self.createTask(task)
+        new_task = self.createTask(task, set_as_active=False)
+        self._active_id = new_task.id
 
-    def saveStepsToActive(self, serialized_steps):
+    def saveStepsToActive(self, json_steps, duration_ms):
         task = self.getActiveTask()
         if task:
-            task.steps = serialized_steps
+            task.steps = json_steps
         else:
-            task = TaskModel(name="New Task", steps=serialized_steps)
+            task = TaskModel(name="New Task", steps=json_steps, duration_ms=duration_ms)
+            # This will create DB entry and set active ID
             self._silentCreateTask(task)
+            # Re-fetch active because _silentCreateTask might have changed it
+            task = self.getActiveTask()
+
+        steps_json = task.dumpSteps()
+        with self.db.getConn() as conn:
+            cursor = conn.execute("""
+                                  UPDATE tasks SET steps = ?, duration_ms = ? WHERE id= ? AND name = ?
+                                  RETURNING id, created_at
+                                  """, (steps_json, duration_ms, task.id, task.name))
+
+            # Update timestamps if needed
+            row = cursor.fetchone()
+            if row:
+                task.created_at = row["created_at"]
+
+            conn.commit()
+
         self.taskSaved.emit(task)
 
-    def setActiveTask(self, task_idx: int):
-        if task_idx < -1 or task_idx >= len(self.tasks):
-            raise IndexError("Task index out of bounds.")
+    def setActiveId(self, task_id: int):
+        if task_id not in self.tasks:
+            # Fallback or error
+            if not self.tasks:
+                if self._active_id is not None:
+                    self._active_id = None
+                    self.activeStepSet.emit()
+                return
+            raise KeyError(f"Task ID {task_id} not found in store.")
 
-        if task_idx != self._active_idx:
-            self._active_idx = task_idx
+        if task_id != self._active_id:
+            self._active_id = task_id
             self.activeStepSet.emit()
 
-    def duplicate_task(self, task_name: str=None):
+    def duplicateTask(self, task_name: str = None):
+        """Duplicates a task. If task_name is None, duplicates active."""
+        if task_name is None:
+            target_task = self.getActiveTask()
+        else:
+            target_task = self.getTaskByName(task_name)
+
+        if not target_task:
+            return None
+
+        new_name = self.generateUniqueName(target_task.name)
+        new_model = TaskModel(new_name, steps=target_task.steps, duration_ms=target_task.duration_ms)
+
+        # Determine if we should set as active (original logic: if task_name passed as None, set active)
         set_as_active = task_name is None
-        ref_task_idx = self.getTaskIdx(task_name) if task_name is not None else self._active_idx
-        if ref_task_idx == -1: return None
-        ref_task = self.tasks[ref_task_idx]
-        new_name = self.generateUniqueName(task_name)
-        return self.createTask(TaskModel(new_name, steps=ref_task.steps, repeat=ref_task.repeat), set_as_active=set_as_active)
+        return self.createTask(new_model, set_as_active=set_as_active)
 
     def getActiveTask(self):
-        return self.tasks[self._active_idx] if self.tasks else None
+        if self._active_id is not None and self._active_id in self.tasks:
+            return self.tasks[self._active_id]
+        return None
 
-    def getActiveTaskIdx(self):
-        return self._active_idx
+    def getTaskById(self, task_id: int):
+        return self.tasks.get(task_id)
 
-    def getTaskIdx(self, task_name: str):
-        for i, task in enumerate(self.tasks):
+    def getActiveId(self):
+        return self._active_id
+
+    def getTaskByName(self, task_name: str):
+        for task in self.tasks.values():
             if task.name == task_name:
-                return i
-        return -1
+                return task
+        return None
 
     def validateRename(self, new_name, current_name):
-        """
-        Validates a name change.
-        Returns: (is_valid, result_string_or_error_message)
-        """
         clean_name = new_name.strip()
 
         if not clean_name:
@@ -130,34 +208,13 @@ class TaskStore(BaseStore):
         if clean_name == current_name:
             return True, clean_name
 
-        if self.getTaskIdx(clean_name) != -1:
+        if self.getTaskByName(clean_name) is not None:
             return False, f"Task '{clean_name}' already exists"
 
         return True, clean_name
 
     def generateUniqueName(self, base_name):
-        """
-        Generates a unique name based off base_name.
-        If base is present, returns a name like base_name (1), base_name (2), etc.
-        """
-        existing_names = {task.name for task in self.tasks}
-
-        # Smart Strip: Check if base_name already ends in "(digits)"
-        match_existing = re.match(r"^(.*?)\s\(\d+\)$", base_name)
-
-        if match_existing:
-            # User passed "Task (1)", so our core name is just "Task"
-            core_name = match_existing.group(1)
-        else:
-            # User passed "Task", so that is our core name
-            core_name = base_name
-
-        i = 1
-        while base_name in existing_names:
-            base_name = f"{core_name} ({i})"
-            i += 1
-
-        return base_name
+        return generateUniqueName(self.tasks.values(), base_name)
 
     def exportActiveTask(self, filepath):
         active_task = self.getActiveTask()
@@ -169,30 +226,42 @@ class TaskStore(BaseStore):
         original_name = data.get("name", "Imported Task")
         safe_name = self.generateUniqueName(original_name)
         data["name"] = safe_name
+
         task_model = TaskModel(**data)
-        self.tasks.append(task_model)
+        self.createTask(task_model)
 
         global_logger.log(f"Imported task '{original_name}' as '{safe_name}'.")
 
         return True
 
-    def serialize(self):
-        serial_data = []
-        for task_model in self.tasks:
-            serial_data.append(task_model.toDict())
+    def initialLoad(self):
+        self.tasks.clear()
+        self._active_id = None
 
-        return serial_data
+        with self.db.getConn() as conn:
+            # We still order by created_at to maintain a logical list order
+            rows = conn.execute("SELECT * FROM tasks ORDER BY created_at")
+            first_id = None
 
-    def deserialize(self, data):
-        if not data: return
-        for task_data in data:
-            task_model = TaskModel(**task_data)
-            self.tasks.append(task_model)
+            for row in rows:
+                t_id = row["id"]
+                if first_id is None:
+                    first_id = t_id
 
-        if self.tasks: self.setActiveTask(0)
+                j_steps = row["steps"]
+                self.tasks[t_id] = TaskModel(
+                    name=row["name"],
+                    steps=json.loads(j_steps) if j_steps else None,
+                    created_at=row["created_at"],
+                    duration_ms=row["duration_ms"],
+                    id=t_id
+                )
+
+        if self.tasks and first_id is not None:
+            self.setActiveId(first_id)
 
     def __iter__(self):
-        return iter(self.tasks)
+        return iter(self.tasks.values())
 
     def __len__(self):
         return len(self.tasks)

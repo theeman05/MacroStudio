@@ -1,6 +1,5 @@
 import time
-from typing import TYPE_CHECKING
-from functools import wraps
+from typing import TYPE_CHECKING, Union
 from PySide6.QtCore import QObject, Signal, QTimer
 from PySide6.QtWidgets import QMessageBox
 
@@ -10,33 +9,38 @@ from macro_studio.core.types_and_enums import LogLevel, WorkerState
 from macro_studio.core.utils import global_logger
 from .task_controller import TaskController
 from .threaded_controller import ThreadedController
+from macro_studio.core.data import Profile, TaskModel
+
 
 if TYPE_CHECKING:
-    from macro_studio.core.data import Profile, TaskModel
+    from macro_studio.core.data.profile import TaskRelationship
 
 DEADLOCK_TIME_MS = 200
 WORKER_MONITOR_RATE_MS = 2000
 PULSE_DEADLOCK_DURATION_S = 5.0
 
 class ManualTaskController(TaskController):
-    def __init__(self, manager, var_store, task_model: "TaskModel", cid: int):
+    def __init__(self, manager, var_store, relationship: "TaskRelationship", cid: int):
+        task_model = manager.profile.tasks.getTaskById(relationship.task_id)
+        self.relationship = relationship
         self._wrapper = ManualTaskWrapper(var_store, task_model)
-        super().__init__(manager=manager, task_func=self._wrapper.runTask, task_id=cid, repeat=task_model.repeat,
-                         unique_name=task_model.name,is_enabled=not task_model.disabled)
+        super().__init__(manager=manager, task_func=self._wrapper.runTask, task_id=cid, repeat=relationship.repeat,
+                         unique_name=task_model.name, is_enabled=relationship.is_enabled)
 
     @property
     def repeat(self):
-        return self._wrapper.model.repeat
+        return self.relationship.repeat
 
     @repeat.setter
     def repeat(self, value):
-        self._wrapper.model.repeat = value
+        if self.relationship.repeat == value: return
+        self.manager.profile.updateRelationshipState(self.relationship, "repeat", value)
 
     def isEnabled(self):
-        return not self._wrapper.model.disabled
+        return self.relationship.is_enabled
 
     def setEnabled(self, enabled: bool):
-        self._wrapper.model.disabled = not enabled
+        self.manager.profile.updateRelationshipState(self.relationship, "is_enabled", enabled)
         return super().setEnabled(enabled)
 
     def updateModel(self, task_model: "TaskModel"):
@@ -62,13 +66,13 @@ class TaskManager(QObject):
         self.watchdog_timer = QTimer()
 
         tasks = profile.tasks
-        tasks.taskAdded.connect(self._onManualTaskAdded)
         tasks.taskRemoved.connect(self._onManualTaskRemoved)
         tasks.taskSaved.connect(self._onManualTaskSaved)
         tasks.taskRenamed.connect(self._onManualTaskRenamed)
+        profile.relationshipCreated.connect(self._onRelationshipCreated)
         self.watchdog_timer.timeout.connect(self._checkWorkerHealth)
 
-        self._onProfileLoaded()
+        self.profile.loaded.connect(self._onProfileLoaded)
 
     @property
     def loop_delay(self):
@@ -96,6 +100,9 @@ class TaskManager(QObject):
     def getController(self, name_or_id: str | int):
         controller = self.controllers.get(name_or_id)
         return controller.context if controller else None
+
+    def removeController(self, controller):
+        self.controllers.pop(controller.name, None)
 
     def startWorker(self):
         self.worker.clearPauseState(WorkerState.RUNNING)
@@ -187,20 +194,26 @@ class TaskManager(QObject):
         return [controller for controller in self.controllers.values() if controller.isEnabled()]
 
     def _onProfileLoaded(self):
+        stale_keys = []
         for cid in self.controllers:
-            if isinstance(cid, str): self._onManualTaskRemoved(cid)
+            if isinstance(cid, str):
+                stale_keys.append(cid)
 
-        for task_model in self.profile.tasks:
-            self._onManualTaskAdded(task_model)
+        for cid in stale_keys:
+            self._onManualTaskRemoved(cid)
+
+        for relationship in self.profile.task_relationships.values():
+            self._onRelationshipCreated(relationship)
 
     def _registerController(self, controller: TaskController):
         self.next_cid += 1
         self.controllers[controller.name] = controller
 
-    def _onManualTaskAdded(self, task_model: "TaskModel"):
-        self._registerController(ManualTaskController(self, self.profile.vars, task_model, self.next_cid))
+    def _onRelationshipCreated(self, relationship: "TaskRelationship"):
+        self._registerController(ManualTaskController(self, self.profile.vars, relationship, self.next_cid))
 
-    def _onManualTaskRemoved(self, task_name: str):
+    def _onManualTaskRemoved(self, task: Union[TaskModel, str]):
+        task_name = task.name if isinstance(task, TaskModel) else task
         if task_name in self.controllers:
             controller = self.controllers.pop(task_name)
             controller.stop()
@@ -211,17 +224,19 @@ class TaskManager(QObject):
         if isinstance(controller, ManualTaskController):
             controller.updateModel(task_model)
         elif controller is None:
-            print(f"Warning: Tried to save '{task_model.name}', but no controller was found in the registry.")
+            # Assume it is not added to this profile
+            pass
         else:
             print(f"Warning: '{task_model.name}' is a {type(controller).__name__}, not a ManualTaskController.")
 
-    def _onManualTaskRenamed(self, old_name, new_name):
+    def _onManualTaskRenamed(self, old_name, task_model: "TaskModel"):
         controller = self.controllers.get(old_name)
         if isinstance(controller, ManualTaskController):
             del self.controllers[controller.name]
-            controller.name = new_name
-            self.controllers[new_name] = controller
+            controller.name = task_model.name
+            self.controllers[task_model.name] = controller
         elif controller is None:
-            print(f"Warning: Tried to update name of '{old_name}', but no controller was found in the registry.")
+            # Assume it is not added to this profile
+            pass
         else:
             print(f"Warning: '{old_name}' is a {type(controller).__name__}, not a ManualTaskController.")

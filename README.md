@@ -4,12 +4,18 @@
 
 **Limitless automation, powered by Python.**
 
-The **Python Macro Studio** is a robust automation framework that bridges the gap between simple macro recorders and complex software development. Unlike traditional click-recorders, this engine allows you to script logic in pure Python, giving you access to the full power of the language, from computer vision (OpenCV) to API requests while managing the lifecycle of your tasks through a user-friendly GUI.
+The **Macro Studio** is a robust automation framework that bridges the gap between simple macro recorders and complex software development. Unlike traditional click-recorders, this engine allows you to script logic in pure Python, giving you access to the full power of the language, from computer vision (OpenCV) to API requests while managing the lifecycle of your tasks through a user-friendly GUI.
 
 ## 🚀 Key Features
 
 ### ♾️ Infinite Possibilities
 If you can code it in Python, you can automate it. Import any library, use complex logic, and interact with the OS at a deep level. You are not limited to "click here, wait 5 seconds."
+
+### 📂 Profile Management
+Manage multiple configurations with ease. Profiles allow:
+* **Environment Isolation:** Create specific profiles for different use cases, each with its own set of variable values.
+* **Task Persistence:** Save the enabled/disabled states and repeat toggles of your recorded tasks.
+* **Quick Swapping:** Switch between different automation setups instantly without having to re-recording tasks.
 
 ### 🎛️ Visual Task Manager
 ![Task Manager UI](docs/assets/TaskManager.png)
@@ -24,7 +30,9 @@ The Visual Task Manager is the central orchestration hub of the studio. It provi
 ### 🧩 Variable Management
 ![Variables UI](docs/assets/VariablesTab.png) 
 
-Predefine variables (Integers, Booleans, Regions, Points, etc.) that are exposed in the GUI. Users can tweak settings (like `click_spot` or `scan_area`) safely via the interface without ever touching the code.
+Define variables (Integers, Booleans, Regions, Points, etc.) that are exposed in the GUI. Users can tweak settings (like `click_spot` or `scan_area`) safely via the interface without ever touching the code. 
+
+These values are **saved per-profile**, allowing you to maintain different configurations for the same tasks across different environments.
 
 As of right now, the engine supports complex types like `QRect` (Regions) and `QPoint` (Coordinates) with visual overlays, ensuring users don't have to guess pixel coordinates (but they still can if they want to)!
 
@@ -35,7 +43,7 @@ The entry barrier is now lowered! Using the `Recorder` tab, users can:
 
 * **Record:** Create new tasks by simply recording your mouse and keyboard actions, no coding required.
 * **Edit:** Fine-tune your recorded actions directly in the Engine's GUI (change delays, adjust coordinates) without opening a text editor.
-
+* **Global Task Pool:** Recorded tasks are created globally. You can then use the Task Manager to selectively add, remove, or toggle these tasks within specific profiles, allowing for modular automation design.
 
 ### 🧬 Extensible Type System
 
@@ -69,7 +77,7 @@ def my_task():
 class BasicMacro:
     def __init__(self, studio):
         # Add the task to the studio
-        studio.addRunTask(my_task, repeat=True)
+        studio.addBasicTask(my_task, repeat=True)
 
 ```
 
@@ -79,12 +87,14 @@ When you add a task using `addRunTask`, the engine returns a **Task Controller**
 
 ```python
     def __init__(self, studio):
+
+
     self.studio = studio
-    # Save the controller to a variable
-    self.worker_ctrl = studio.addRunTask(self.my_task)
-    # Add a variable so the user can choose to sleep "my_task" or not and set the default value to "True"
-    studio.addVar("Sleep My Task", bool, True, "Sleeps My Task On Execute")
-    studio.addRunTask(self.manager_task)
+# Save the controller to a variable
+self.worker_ctrl = studio.addBasicTask(self.my_task)
+# Add a variable so the user can choose to sleep "my_task" or not and set the default value to "True"
+studio.addVar("Sleep My Task", bool, True, "Sleeps My Task On Execute")
+studio.addBasicTask(self.manager_task)
 
 
 def manager_task(self, controller: Controller):
@@ -124,22 +134,25 @@ class ThreadMacro:
 
 ### 4. Passing Custom Arguments
 Your task functions aren't limited to just the `controller`. You can pass any custom arguments and keyword arguments directly through the engine router to make your tasks dynamic and reusable!
+
 ```python
 from macro_studio import MacroStudio, Controller, taskSleep
+
 
 # Define a dynamic task
 def farm_resource(controller: Controller, resource_name: str, farm_duration: int):
     controller.log(f"Starting to farm {resource_name}...")
-    
+
     # Use the custom arguments in your logic
     yield from taskSleep(farm_duration)
     controller.log(f"Finished farming {resource_name}!")
 
+
 studio = MacroStudio("Farm Macro")
 
 # Queue the same task multiple times with different arguments!
-studio.addRunTask(farm_resource, "Gold", farm_duration=60)
-studio.addRunTask(farm_resource, "Wood", farm_duration=120)
+studio.addBasicTask(farm_resource, "Gold", farm_duration=60)
+studio.addBasicTask(farm_resource, "Wood", farm_duration=120)
 
 ```
 

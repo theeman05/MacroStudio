@@ -20,7 +20,7 @@ def _handleTasksOnHard(controller: "TaskController", notified_tasks: set):
     notified_tasks.add(controller)
     if not controller.isInterrupted():
         # Throw if not in notified already
-        return was_in_notified or controller.throwInterruptedError(True)
+        return was_in_notified or not controller.isAlive() or controller.throwInterruptedError(True)
     return controller.isAlive()
 
 class TaskWorker(QThread):
@@ -128,12 +128,18 @@ class TaskWorker(QThread):
 
     def handleStoppedEnd(self):
         with QMutexLocker(self._mutex):
+            active_snapshot = list(self._task_heap)
             paused_snapshot = list(self._paused_tasks)
             self._task_heap.clear()
             self._paused_tasks.clear()
 
         for controller in paused_snapshot:
             controller.stop(by_worker=True)
+
+        for entry in active_snapshot:
+            controller = entry[3]
+            if controller.isAlive():
+                controller.stop(by_worker=True)
 
     def _onRunEnd(self):
         # Handle when run loop ends
