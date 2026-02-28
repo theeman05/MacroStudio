@@ -11,11 +11,9 @@ from macro_studio.api.thread_context import ThreadContext as ThreadedController
 
 
 class MacroStudio:
-    def __init__(self, macro_name: str):
-        self._profile = Profile(macro_name)
-        self._closing = False
+    def __init__(self, macro_name: str=None):
+        self._profile = Profile()
         self._manager = TaskManager(self, self._profile)
-        self._profile_name = macro_name
 
         # Setup UI stuff
         self.ui = MainWindow(self._manager, self._profile)
@@ -27,6 +25,8 @@ class MacroStudio:
         self.ui.pause_signal.connect(self.pauseExecution)
         self.ui.stop_signal.connect(self.cancelExecution)
         self._manager.finished_signal.connect(lambda: self.cancelExecution(True))
+
+        self._profile.load(macro_name or "Default")
 
     def addVar(self, key: Hashable, data_type: CaptureMode | type, default_val: object=None, pick_hint: str=None):
         """
@@ -190,4 +190,5 @@ class MacroStudio:
     def launch(self):
         self.ui.show()
         self.app.exit()
+
         sys.exit(self.app.exec())

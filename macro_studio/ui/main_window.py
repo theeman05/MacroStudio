@@ -2,6 +2,8 @@ import ctypes
 import os
 import uuid, sys, signal
 from datetime import datetime
+from typing import TYPE_CHECKING
+
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QLabel, QTabWidget, QDockWidget, QStatusBar,QVBoxLayout, QWidget
 )
@@ -21,6 +23,10 @@ from .widgets.main_window.integrated_header import IntegratedHeader
 from .widgets.main_window.runtime_widget import RuntimeWidget
 
 
+if TYPE_CHECKING:
+    from macro_studio.core.data import Profile
+
+
 def getResourcePath(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
     try:
@@ -36,6 +42,7 @@ def getResourcePath(relative_path):
 
     return os.path.join(base_path, relative_path)
 
+DEFAULT_SIZE = (900, 700)
 
 class MainWindow(QMainWindow):
     start_signal = Signal()
@@ -43,7 +50,7 @@ class MainWindow(QMainWindow):
     pause_signal = Signal(bool) # Interrupted
     hotkey_signal = Signal(str)
 
-    def __init__(self, task_manager, profile):
+    def __init__(self, task_manager, profile: "Profile"):
         if sys.platform == 'win32':
             my_app_id = 'com.theeman05.macro_studio.client.v1'
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(my_app_id)
@@ -51,7 +58,7 @@ class MainWindow(QMainWindow):
         self.app = QApplication(sys.argv)
         super().__init__()
         self.setWindowTitle(f"Macro Studio")
-        self.resize(900, 700)
+        self.resize(*DEFAULT_SIZE)
         self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint)
         self._setIcon()
 
@@ -66,7 +73,8 @@ class MainWindow(QMainWindow):
 
         # 1. Core UI Components
         self.overlay = TransparentOverlay(self)
-        self.manager_tab = TaskManagerTab(task_manager)
+
+        self.manager_tab = TaskManagerTab(self, task_manager)
         self.variables_tab = VariablesTab(profile.vars, self.overlay)
         self.recorder_tab = RecorderTab(self.overlay, profile)
         ThemeManager.applyTheme(self)
@@ -80,7 +88,7 @@ class MainWindow(QMainWindow):
 
         # 3. Setup Dock & Toolbar
         self._setupStatusBar()
-        self.header = IntegratedHeader(profile.name)
+        self.header = IntegratedHeader(profile)
         self._setupLogDock()
         self.main_layout.addWidget(self.header)
 
@@ -91,14 +99,23 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.recorder_tab, "Recorder")
         self.main_layout.addWidget(self.tabs)
 
-        # Needed for interrrupted close
+        # Needed for interrupted close
         timer_breathe = QTimer()
         timer_breathe.timeout.connect(lambda: None)
         timer_breathe.start(500)
 
-        # 5. Connections
+        self._connectSignals()
+
+        # Initial state stuff
+        self.listener.start()
+        self._onTabChanged(0)
+        self.toggleOverlay()
+        self.stopMacroVisuals()
+
+    def _connectSignals(self):
         signal.signal(signal.SIGINT, self._handleInterrupt)
         global_logger.log_emitted.connect(self.log)
+        self.profile.loaded.connect(self._onProfileLoaded)
         self.header.btn_start.clicked.connect(self.onStartClicked)
         self.header.btn_stop.clicked.connect(self.onStopClicked)
         self.header.btn_interrupt.clicked.connect(self.onInterruptClicked)
@@ -111,11 +128,13 @@ class MainWindow(QMainWindow):
             '<f6>': lambda: self.hotkey_signal.emit("F6")
         })
 
-        # Initial state stuff
-        self.listener.start()
-        self._onTabChanged(0)
-        self.toggleOverlay()
-        self.stopMacroVisuals()
+    def _onProfileLoaded(self, is_first_load):
+        self.overlay.render_geometry.clear()
+        self.overlay.showing_geometry = None
+        self.overlay.update()
+        if is_first_load:
+            self.header.loadOnce()
+        self.variables_tab.onProfileLoaded()
 
     def _setIcon(self):
         icon_path = getResourcePath(os.path.join("assets", "app_icon.ico"))
@@ -131,7 +150,7 @@ class MainWindow(QMainWindow):
         QApplication.instance().quit()
 
     def _onTabChanged(self, index):
-        min_size = getattr(self.tabs.widget(index), 'MIN_SIZE', None)
+        min_size = getattr(self.tabs.widget(index), 'MIN_SIZE', DEFAULT_SIZE)
         if min_size is not None:
             width, height = min_size
 

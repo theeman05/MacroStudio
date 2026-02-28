@@ -1,3 +1,4 @@
+import sqlite3
 from dataclasses import dataclass
 
 from PySide6.QtCore import QObject, Signal
@@ -14,21 +15,20 @@ class TaskRelationship:
     is_enabled: bool
 
 class Profile(QObject):
+    loaded = Signal(bool) # Is First Load
     relationshipCreated = Signal(object) # (relationship object)
 
-    def __init__(self, profile_name: str, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
         self.db = DatabaseManager()
-        self.name = profile_name
-        self.id = self._getOrCreateId()
         self.task_relationships: dict[int, TaskRelationship] = dict() # Task_id, relationship
+        self.name: str | None = None
+        self.id: int | None = None
 
-        self.vars = VariableStore(self.db, self.id, parent=self)
+        self.vars = VariableStore(self.db, parent=self)
         self.tasks = TaskStore(self, parent=self)
+        self.profile_names = set()
 
-        self.load()
-
-        # Connect Signals
         self.tasks.taskRemoved.connect(self._onTaskRemoved)
 
     def _getOrCreateId(self):
@@ -47,7 +47,44 @@ class Profile(QObject):
         if deleted_model.id in self.task_relationships:
             del self.task_relationships[deleted_model.id]
 
+    def createProfile(self, profile_name: str):
+        if profile_name in self.profile_names: return False
+        self.profile_names.add(profile_name)
+        with self.db.getConn() as conn:
+            try:
+                conn.execute("INSERT INTO profiles (name) VALUES (?)", (profile_name,))
+                conn.commit()
+            except sqlite3.IntegrityError:
+                return False
+        return True
+
+    def renameProfile(self, old_name, new_name):
+        if old_name not in self.profile_names or new_name in self.profile_names: return False
+        with self.db.getConn() as conn:
+            try:
+                conn.execute("UPDATE profiles SET name = ? WHERE name = ?", (new_name, old_name))
+                conn.commit()
+            except sqlite3.IntegrityError:
+                return False
+
+        self.profile_names.remove(old_name)
+        self.profile_names.add(new_name)
+
+        return True
+
+    def deleteProfile(self, profile_name):
+        if profile_name not in self.profile_names: return False
+        self.profile_names.remove(profile_name)
+        with self.db.getConn() as conn:
+            try:
+                conn.execute("DELETE FROM profiles WHERE name = ?", (profile_name,))
+            except sqlite3.IntegrityError:
+                return False
+
+        return True
+
     def createRelationship(self, task_id, repeat=False, enabled=True):
+        if task_id in self.task_relationships: return
         with self.db.getConn() as conn:
             cursor = conn.execute("""
                 INSERT INTO profile_tasks (profile_id, task_id, repeat, is_enabled) 
@@ -72,9 +109,20 @@ class Profile(QObject):
             conn.execute(query, (value, relationship.id))
             conn.commit()
 
-    def load(self):
-        self.task_relationships.clear()
+    def removeRelationship(self, task_id):
+        if task_id in self.task_relationships:
+            del self.task_relationships[task_id]
 
+            with self.db.getConn() as conn:
+                conn.execute("DELETE FROM profile_tasks WHERE task_id = ?", (task_id,))
+                conn.commit()
+
+    def load(self, profile_name: str):
+        is_first_load = self.name is None
+        self.name = profile_name
+        self.id = self._getOrCreateId()
+
+        self.task_relationships.clear()
         with self.db.getConn() as conn:
             rows = conn.execute("SELECT * FROM profile_tasks WHERE profile_id = ? ORDER BY created_at", (self.id,))
             for row in rows:
@@ -85,5 +133,13 @@ class Profile(QObject):
                     is_enabled=row["is_enabled"]
                 )
 
-        self.vars.load()
-        self.tasks.load()
+            if is_first_load:
+                rows = conn.execute("SELECT * FROM profiles ORDER BY updated_at")
+                for row in rows:
+                    self.profile_names.add(row["name"])
+
+        self.vars.load(self.id)
+        if is_first_load:
+            self.tasks.initialLoad()
+
+        self.loaded.emit(is_first_load)

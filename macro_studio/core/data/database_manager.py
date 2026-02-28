@@ -2,6 +2,49 @@ import sqlite3, os
 from macro_studio.core.utils.logger import global_logger
 
 
+def _setupTriggers(cursor):
+    """Initializes all database triggers at once."""
+    cursor.executescript("""
+        -- Profile Tasks Triggers
+        CREATE TRIGGER IF NOT EXISTS trg_profile_tasks_insert
+        AFTER INSERT ON profile_tasks
+        BEGIN
+            UPDATE profiles SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.profile_id;
+        END;
+    
+        CREATE TRIGGER IF NOT EXISTS trg_profile_tasks_update
+        AFTER UPDATE ON profile_tasks
+        BEGIN
+            UPDATE profiles SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.profile_id;
+        END;
+    
+        CREATE TRIGGER IF NOT EXISTS trg_profile_tasks_delete
+        AFTER DELETE ON profile_tasks
+        BEGIN
+            UPDATE profiles SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.profile_id;
+        END;
+    
+        -- Variables Triggers
+        CREATE TRIGGER IF NOT EXISTS trg_variables_insert
+        AFTER INSERT ON variables
+        BEGIN
+            UPDATE profiles SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.profile_id;
+        END;
+    
+        CREATE TRIGGER IF NOT EXISTS trg_variables_update
+        AFTER UPDATE ON variables
+        BEGIN
+            UPDATE profiles SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.profile_id;
+        END;
+    
+        CREATE TRIGGER IF NOT EXISTS trg_variables_delete
+        AFTER DELETE ON variables
+        BEGIN
+            UPDATE profiles SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.profile_id;
+        END;
+    """)
+
+
 class DatabaseManager:
     _instance = None
     DB_NAME = "macro_studio.db"
@@ -39,6 +82,7 @@ class DatabaseManager:
                                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                                 name TEXT,
                                 steps TEXT,
+                                duration_ms INTEGER,
                                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                             )
                            """)
@@ -72,9 +116,12 @@ class DatabaseManager:
                             )
                            """)
 
+            _setupTriggers(cursor)
+
             conn.commit()
         except Exception as e:
             print("INIT ERROR", e)
             global_logger.logError(f"Database Init Error: {e}")
         finally:
             conn.close()
+

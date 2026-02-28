@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt, QEvent, QTimer
 
 from macro_studio.core.registries.capture_type_registry import GlobalCaptureRegistry
 from macro_studio.ui.shared import HoverButton
+from macro_studio.ui.widgets.standalone.empty_state_widget import EmptyStateWidget
 from macro_studio.ui.widgets.var_tab.variable_table_model import VariableTableModel
 from macro_studio.ui.widgets.var_tab.create_variable_dialog import VarCreateOverlay
 from macro_studio.ui.widgets.var_tab.delete_confirmation_overlay import DeleteConfirmationOverlay
@@ -73,8 +74,13 @@ class VariablesTab(QWidget):
         self.table_view.verticalHeader().setVisible(False)
         self.table_view.setItemDelegateForColumn(2, SmartDelegate(self.table_view))
 
-        for var_name in var_store:
-            self._onVarChanged(var_name)
+        self.empty_state = EmptyStateWidget()
+        self.empty_state.setupState(
+            icon_name="msc.variable-group",
+            title="No variables yet",
+            subtitle="Click below to create your first variable",
+            btn_text="Create Variable"
+        )
 
         # Context Menu & Events
         self.table_view.setMouseTracking(True)
@@ -87,15 +93,33 @@ class VariablesTab(QWidget):
         add_var_btn.clicked.connect(self.showVariableCreator)
         del_var_btn.clicked.connect(self.showDeleteConfirmation)
         self.delete_overlay.deleteConfirmed.connect(self.deleteSelectedVars)
+        self.empty_state.action_btn.clicked.connect(self.showVariableCreator)
 
         layout.addWidget(self.table_view, 0, 0)
-        layout.addLayout(special_bar_layout, 0, 0, alignment=Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
+        layout.addWidget(self.empty_state, 0, 0)
         layout.addWidget(self.create_overlay, 0, 0)
         layout.addWidget(self.delete_overlay, 0, 0)
+        layout.addLayout(special_bar_layout, 0, 0, alignment=Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
+
+        self.checkEmptyState()
 
     def leaveEvent(self, event):
         self.overlay.removeHighlightedData()
         super().leaveEvent(event)
+
+    def checkEmptyState(self):
+        """Toggles the visibility of the empty state overlay."""
+        is_empty = len(self.var_store) == 0
+
+        if is_empty:
+            self.empty_state.show()
+        else:
+            self.empty_state.hide()
+
+    def onProfileLoaded(self):
+        self.model.completelyRefresh()
+        for var_name in self.var_store:
+            self._onVarChanged(var_name)
 
     def showVariableCreator(self):
         self.create_overlay.show()
@@ -115,6 +139,8 @@ class VariablesTab(QWidget):
             self.overlay.render_geometry.remove(config)
             self.overlay.update()
 
+        self.checkEmptyState()
+
     def _onVarChanged(self, var_name):
         config = self.model.store[var_name]
         if GlobalCaptureRegistry.containsType(config.data_type):
@@ -122,6 +148,8 @@ class VariablesTab(QWidget):
             self.overlay.update()
         else:
             self._onVarRemoved(None, config)
+
+        self.checkEmptyState()
 
     def _onItemHovered(self, index):
         if not index.isValid(): return

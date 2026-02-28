@@ -72,7 +72,7 @@ class TaskManager(QObject):
         profile.relationshipCreated.connect(self._onRelationshipCreated)
         self.watchdog_timer.timeout.connect(self._checkWorkerHealth)
 
-        self._onProfileLoaded()
+        self.profile.loaded.connect(self._onProfileLoaded)
 
     @property
     def loop_delay(self):
@@ -100,6 +100,9 @@ class TaskManager(QObject):
     def getController(self, name_or_id: str | int):
         controller = self.controllers.get(name_or_id)
         return controller.context if controller else None
+
+    def removeController(self, controller):
+        self.controllers.pop(controller.name, None)
 
     def startWorker(self):
         self.worker.clearPauseState(WorkerState.RUNNING)
@@ -191,8 +194,13 @@ class TaskManager(QObject):
         return [controller for controller in self.controllers.values() if controller.isEnabled()]
 
     def _onProfileLoaded(self):
+        stale_keys = []
         for cid in self.controllers:
-            if isinstance(cid, str): self._onManualTaskRemoved(cid)
+            if isinstance(cid, str):
+                stale_keys.append(cid)
+
+        for cid in stale_keys:
+            self._onManualTaskRemoved(cid)
 
         for relationship in self.profile.task_relationships.values():
             self._onRelationshipCreated(relationship)
@@ -221,12 +229,12 @@ class TaskManager(QObject):
         else:
             print(f"Warning: '{task_model.name}' is a {type(controller).__name__}, not a ManualTaskController.")
 
-    def _onManualTaskRenamed(self, old_name, new_name):
+    def _onManualTaskRenamed(self, old_name, task_model: "TaskModel"):
         controller = self.controllers.get(old_name)
         if isinstance(controller, ManualTaskController):
             del self.controllers[controller.name]
-            controller.name = new_name
-            self.controllers[new_name] = controller
+            controller.name = task_model.name
+            self.controllers[task_model.name] = controller
         elif controller is None:
             # Assume it is not added to this profile
             pass

@@ -14,10 +14,10 @@ class VariableStore(QObject):
     varRemoved = Signal(str, object) # (key string, config)
     varChanged = Signal(str) # (key string)
 
-    def __init__(self, db: "DatabaseManager", profile_id: int, parent=None):
+    def __init__(self, db: "DatabaseManager", parent=None):
         super().__init__(parent)
         self.db = db
-        self._profile_id = profile_id
+        self._profile_id: int | None = None
         self._vars: dict[str, VariableConfig] = {}
 
     def add(self, key: Hashable, data_type: CaptureMode | type, default_val: object=None, pick_hint: str=None):
@@ -120,10 +120,11 @@ class VariableStore(QObject):
     def keys(self):
         return self._vars.keys()
 
-    def load(self):
+    def load(self, profile_id: int):
+        self._profile_id = profile_id
         self._vars.clear()
         with self.db.getConn() as conn:
-            rows = conn.execute("SELECT * FROM variables WHERE profile_id = ?", (self._profile_id,))
+            rows = conn.execute("SELECT * FROM variables WHERE profile_id = ?", (profile_id,))
             for row in rows:
                 config = VariableConfig.fromRow(row)
                 self._vars[row["key"]] = config

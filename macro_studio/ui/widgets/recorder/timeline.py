@@ -12,6 +12,7 @@ from .recorder_main import (createIconLabel, HoverButton, createQtIcon, TRASH_IC
                             IconColor, DragPreviewWidget)
 from .action_bindings import KeyCaptureEditor, SneakyDbSpinBox, SneakyTextEditor
 from .combo_line_editor import DualMouseEditor
+from macro_studio.ui.widgets.standalone.empty_state_widget import EmptyStateWidget
 
 if TYPE_CHECKING:
     from macro_studio.ui.tabs.recorder_tab import RecorderTab
@@ -135,11 +136,21 @@ class DroppableTimelineWidget(QListWidget):
 
         self.setMouseTracking(True)
 
-        # 1. Disable the default indicator (we will draw our own)
+        # Disable the default indicator (we will draw our own)
         self.setDropIndicatorShown(False)
         self.recorder_tab = recorder_tab
 
         self._drag_target_row = -1
+
+        self.empty_state = EmptyStateWidget(self.viewport())
+        self.empty_state.setupState(
+            icon_name="ph.film-strip",
+            title="Timeline is empty",
+            subtitle="Drag actions from the palette to start building your task"
+        )
+
+        # Initial check to see if we should show it
+        self.checkEmptyState()
 
         self.anim_timer = QTimer(self)
         self.anim_timer.timeout.connect(self._update_dash_offset)
@@ -148,6 +159,27 @@ class DroppableTimelineWidget(QListWidget):
         self._dash_offset = 0
         self._active_pair = None  # Tuple: (TimelineItemWidget, TimelineItemWidget)
         self._global_pos = QPoint()
+
+        self.model().rowsInserted.connect(lambda *args: self.checkEmptyState())
+        self.model().rowsRemoved.connect(lambda *args: self.checkEmptyState())
+
+    def checkEmptyState(self):
+        """Toggles the visibility of the empty state overlay."""
+        is_empty = self.count() == 0
+
+        if is_empty:
+            # Force it to cover the entire list area
+            self.empty_state.resize(self.size())
+            self.empty_state.show()
+            self.empty_state.raise_()  # Ensure it sits on top of any residual painting
+        else:
+            self.empty_state.hide()
+
+    def resizeEvent(self, event):
+        """Ensure the empty state overlay always fills the widget."""
+        super().resizeEvent(event)
+        if self.empty_state.isVisible():
+            self.empty_state.resize(self.viewport().size())
 
     def tryLinkWithIdx(self, item_a: QListWidgetItem, widget_a: TimelineItemWidget, other_idx: int):
         """Tries to link the first widget with the item at the other index."""

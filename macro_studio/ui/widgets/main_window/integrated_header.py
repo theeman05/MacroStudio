@@ -1,24 +1,43 @@
+from typing import TYPE_CHECKING
+
 import qtawesome as qta
 from PySide6.QtCore import Qt
 
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QFrame, QPushButton
-from macro_studio.ui.shared import StatefulHoverButton, HoverButton, setBtnState, IconColor
+
 from macro_studio.core.types_and_enums import WorkerState
+from macro_studio.ui.shared import StatefulHoverButton, HoverButton, setBtnState, IconColor
+from macro_studio.ui.widgets.standalone.selector import EditableSelectorDropdown
+from macro_studio.core.utils import generateUniqueName
+
+if TYPE_CHECKING:
+    from macro_studio.core.data import Profile
+    from macro_studio.ui.widgets.standalone.approval_event import ApprovalEvent
 
 
 class IntegratedHeader(QWidget):
-    def __init__(self, name, parent=None):
+    def __init__(self, profile: "Profile", parent=None):
         super().__init__(parent=parent)
+
+        self.profile = profile
+
         # Horizontal Layout
         layout = QHBoxLayout(self)
         layout.setContentsMargins(15, 10, 15, 10)  # Padding: Left, Top, Right, Bottom
         layout.setSpacing(8)  # Space between items
 
         # --- LEFT SIDE: Title ---
-        title_label = QLabel(f"MACRO // {name}")
-        title_label.setObjectName("header_label")
-        title_label.setStyleSheet("font-size: 15px;")
-        layout.addWidget(title_label)
+        self.title_label = QLabel("PROFILE // ")
+        self.title_label.setObjectName("header_label")
+        self.title_label.setStyleSheet("font-size: 15px;")
+        layout.addWidget(self.title_label)
+
+        self.profile_selector = EditableSelectorDropdown()
+        self.profile_selector.popup.inactive_icon = "ph.folder"
+        self.profile_selector.popup.active_icon = "ph.folder-open"
+        self.profile_selector.popup.addSortMode("Alphabetical (A to Z)", lambda name: name.lower())
+        self.profile_selector.popup.addSortMode("Alphabetical (Z to A)", lambda name: name.lower(), reverse=True)
+        layout.addWidget(self.profile_selector)
 
         # Vertical Divider Line
         line = QFrame()
@@ -67,6 +86,50 @@ class IntegratedHeader(QWidget):
 
         self.btn_overlay.clicked.connect(self.toggleOverlayVisual)
         self.toggleOverlayVisual(True)
+
+        self._connectSignals()
+
+    def _connectSignals(self):
+        self.profile_selector.selectionChanged.connect(self.profile.load)
+        self.profile_selector.renameRequested.connect(self._onRenameRequested)
+        self.profile_selector.createRequested.connect(self._onCreateRequested)
+        self.profile_selector.duplicateRequested.connect(self._onDuplicateRequested)
+        self.profile_selector.deleteRequested.connect(self._onDeleteRequested)
+
+    def _onRenameRequested(self, og_name, event: "ApprovalEvent"):
+        new_name = event.value
+        if new_name in self.profile.profile_names or not self.profile.renameProfile(og_name, new_name):
+            event.ignore("Name already exists")
+            return
+
+        event.accept(new_name)
+
+    def _onCreateRequested(self, event: "ApprovalEvent"):
+        new_name = event.value
+        if new_name in self.profile.profile_names or not self.profile.createProfile(new_name):
+            event.ignore("Name already exists")
+            return
+
+        event.accept(new_name)
+
+    def _onDuplicateRequested(self, profile_name, event: "ApprovalEvent"):
+        new_name = generateUniqueName(self.profile.profile_names, profile_name)
+        if not self.profile.createProfile(new_name):
+            event.ignore("Name already exists")
+            return
+
+        event.accept(new_name)
+
+    def _onDeleteRequested(self, profile_name, event: "ApprovalEvent"):
+        if len(self.profile.profile_names) == 1 or not self.profile.deleteProfile(profile_name):
+            event.ignore("Cannot delete last profile")
+            return
+
+        event.accept(profile_name)
+
+    def loadOnce(self):
+        self.profile_selector.populate(self.profile.profile_names)
+        self.profile_selector.setCurrentItem(self.profile.name)
 
     def updateStateVisual(self, state: WorkerState):
         is_interrupted = state == WorkerState.INTERRUPTED

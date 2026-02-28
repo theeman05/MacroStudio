@@ -2,7 +2,7 @@ from macro_studio import MacroStudio
 
 
 def main():
-    studio = MacroStudio("Standalone")
+    studio = MacroStudio()
     studio.launch()
 
 

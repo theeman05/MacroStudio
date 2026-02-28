@@ -2,12 +2,6 @@ QMainWindow {
     background-color: $bg_primary;
 }
 
-QWidget {
-    color: $text_primary;
-    font-family: 'Segoe UI', sans-serif;
-    font-size: 14px;
-}
-
 QTabWidget::pane {
     border: 1px solid $btn_border;
     top: -1px;
@@ -23,18 +17,7 @@ QLabel#header_label {
 }
 
 /* --- Header Container --- */
-#header_container {
-    background-color: $bg_secondary;
-    border-bottom: 1px solid $border_color;
-}
-
-#header_container QLabel {
-    color: #bbb;
-    font-weight: bold;
-    font-size: 15px;
-}
-
-ManagerHeader {
+QFrame#BlueHeader {
     background-color: $header_bg;
     font-weight: bold;
     color: #ffffff;
@@ -66,6 +49,40 @@ QPushButton:pressed {
     background-color: $btn_press;
 }
 
+QLineEdit, QComboBox {
+    background-color: $alt_bg;
+    border: 1px solid $border_color;
+    padding: 6px 6px;
+    border-radius: 6px;
+    color: $text_primary;
+}
+
+QLineEdit:focus, QComboBox:focus {
+    border: 1px solid $selected_color;
+    background-color: $bg_primary;
+}
+
+QCheckBox::indicator {
+    background-color: $btn_bg;
+    border: 1px solid $btn_border;
+    width: 18px; height: 18px;
+    border-radius: 4px;
+}
+
+QCheckBox::indicator:hover {
+    background-color: $btn_hover;
+}
+
+QCheckBox::indicator:checked {
+    background-color: $selected_color;
+    border: 1px solid $text_light;
+    border-radius: 4px;
+}
+
+QCheckBox::indicator:checked:hover {
+    background-color: $selected_hover;
+}
+
 /* --- Specific Button Colors --- */
 QPushButton#btn_pick {
     background-color: $btn_pick_bg;
@@ -89,7 +106,7 @@ QTableView {
 /* 2. The Internal Viewport */
 QTableView::item {
     border-bottom: 1px solid $header_bg;
-    padding: 4px;
+    padding: 0px;
     selection-color: $text_light;
 }
 
@@ -103,8 +120,8 @@ QHeaderView {
 QHeaderView::section {
     background-color: $header_bg;
     font-weight: bold;
-    color: #ffffff;
-    padding: 6px;
+    color: $text_primary;
+    padding: 10px;
     border: none;
     border-bottom: 2px solid $selected_color;
 }
@@ -146,6 +163,32 @@ StatefulHoverButton:hover {
     border: none;
 }
 
+/* --- Empty State View --- */
+QLabel#EmptyStateTitle {
+    color: $text_primary; /* High contrast for the main message */
+    font-size: 16px;
+    font-weight: bold;
+}
+
+QLabel#EmptyStateSubtitle {
+    color: $btn_border_h; /* Muted/greyed out for description */
+    font-size: 13px;
+}
+
+QPushButton#EmptyStateButton {
+    background-color: $selected_color; /* Primary action color */
+    color: $text_primary;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 20px;
+    font-weight: bold;
+    margin-top: 10px;
+}
+
+QPushButton#EmptyStateButton:hover {
+    background-color: $selected_hover;
+}
+
 /* --- Recorder Tab -- */
 QLabel#ActionTitle {
     font-weight: bold;
@@ -179,27 +222,6 @@ DroppableTimelineWidget::item:selected {
     background-color: $selection_color;
     border: 1px solid $alt_bg;
     border-radius: 4px;
-}
-
-QCheckBox::indicator {
-    background-color: $btn_bg;
-    border: 1px solid $btn_border;
-    width: 18px; height: 18px;
-    border-radius: 4px;
-}
-
-QCheckBox::indicator:hover {
-    background-color: $btn_hover;
-}
-
-QCheckBox::indicator:checked {
-    background-color: $selected_color;
-    border: 1px solid $text_light;
-    border-radius: 4px;
-}
-
-QCheckBox::indicator:checked:hover {
-    background-color: $selected_hover;
 }
 
 TimelineItemWidget QCheckBox::indicator:unchecked {
@@ -278,8 +300,8 @@ QPushButton#btn_save:disabled{
     border-radius: 4px;
 }
 
-TaskSelectorPopup {
-    background-color: $bg_secondary;
+SelectorPopup {
+    background-color: $alt_bg;;
     border: 1px solid $border_color;
     border-radius: 4px;
 }
@@ -310,4 +332,10 @@ QFrame#FormCard {
     background-color: $bg_primary;
     border-radius: 8px;
     border: 1px solid $border_color;
+}
+
+#Transparent {
+    background-color: transparent;
+    border: none;
+    outline: none;
 }

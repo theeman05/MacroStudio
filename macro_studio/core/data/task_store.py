@@ -6,26 +6,29 @@ from typing import TYPE_CHECKING, Dict
 from PySide6.QtCore import Signal, QObject
 
 from macro_studio.core.registries.type_handler import GlobalTypeHandler
-from macro_studio.core.utils import FileIO, global_logger
+from macro_studio.core.utils import FileIO, global_logger, generateUniqueName
 
 if TYPE_CHECKING:
     from .profile import Profile
 
 
-@dataclass
+@dataclass(eq=False)
 class TaskModel:
     name: str
     steps: list = None
     created_at: str | datetime = None
+    duration_ms: int = 0
     id: int = None
 
     def __post_init__(self):
         if self.steps is None: self.steps = []
+        if self.duration_ms is None: self.duration_ms = 0
 
     def toDict(self):
         serial = {"name": self.name}
         GlobalTypeHandler.setIfEvals("steps", self.steps, serial)
         GlobalTypeHandler.setIfEvals("created_at", self.created_at, serial)
+        GlobalTypeHandler.setIfEvals("duration_ms", self.duration_ms, serial)
         return serial
 
     def dumpSteps(self) -> str | None:
@@ -37,15 +40,14 @@ class TaskStore(QObject):
     """Tasks are globalized, available for all profiles"""
     activeStepSet = Signal()
     taskAdded = Signal(TaskModel)
-    taskRemoved = Signal(object)  # (removed task)
+    taskRemoved = Signal(TaskModel)  # (removed task)
     taskSaved = Signal(TaskModel)
-    taskRenamed = Signal(str, str)  # (old name, new name)
+    taskRenamed = Signal(str, TaskModel)  # (old name, model with new name)
 
     def __init__(self, profile: "Profile", parent=None):
         super().__init__(parent)
         self.profile = profile
         self.db = profile.db
-        self._profile_id = profile.id
         self.tasks: Dict[int, TaskModel] = {}
         self._active_id: int | None = None
 
@@ -116,18 +118,18 @@ class TaskStore(QObject):
                 conn.execute("UPDATE tasks SET name = ? WHERE id = ? AND name = ?",
                              (new_name, task.id, old_name))
                 conn.commit()
-            self.taskRenamed.emit(old_name, new_name)
+            self.taskRenamed.emit(old_name, task)
 
     def _silentCreateTask(self, task):
         new_task = self.createTask(task, set_as_active=False)
         self._active_id = new_task.id
 
-    def saveStepsToActive(self, json_steps):
+    def saveStepsToActive(self, json_steps, duration_ms):
         task = self.getActiveTask()
         if task:
             task.steps = json_steps
         else:
-            task = TaskModel(name="New Task", steps=json_steps)
+            task = TaskModel(name="New Task", steps=json_steps, duration_ms=duration_ms)
             # This will create DB entry and set active ID
             self._silentCreateTask(task)
             # Re-fetch active because _silentCreateTask might have changed it
@@ -136,9 +138,9 @@ class TaskStore(QObject):
         steps_json = task.dumpSteps()
         with self.db.getConn() as conn:
             cursor = conn.execute("""
-                                  UPDATE tasks SET steps = ? WHERE id= ? AND name = ?
+                                  UPDATE tasks SET steps = ?, duration_ms = ? WHERE id= ? AND name = ?
                                   RETURNING id, created_at
-                                  """, (steps_json, task.id, task.name))
+                                  """, (steps_json, duration_ms, task.id, task.name))
 
             # Update timestamps if needed
             row = cursor.fetchone()
@@ -153,7 +155,9 @@ class TaskStore(QObject):
         if task_id not in self.tasks:
             # Fallback or error
             if not self.tasks:
-                self._active_id = None
+                if self._active_id is not None:
+                    self._active_id = None
+                    self.activeStepSet.emit()
                 return
             raise KeyError(f"Task ID {task_id} not found in store.")
 
@@ -172,10 +176,10 @@ class TaskStore(QObject):
             return None
 
         new_name = self.generateUniqueName(target_task.name)
-        new_model = TaskModel(new_name, steps=target_task.steps)
+        new_model = TaskModel(new_name, steps=target_task.steps, duration_ms=target_task.duration_ms)
 
         # Determine if we should set as active (original logic: if task_name passed as None, set active)
-        set_as_active = (task_name is None)
+        set_as_active = task_name is None
         return self.createTask(new_model, set_as_active=set_as_active)
 
     def getActiveTask(self):
@@ -210,25 +214,7 @@ class TaskStore(QObject):
         return True, clean_name
 
     def generateUniqueName(self, base_name):
-        existing_names = {task.name for task in self.tasks.values()}
-
-        match_existing = re.match(r"^(.*?)\s\(\d+\)$", base_name)
-        if match_existing:
-            core_name = match_existing.group(1)
-        else:
-            core_name = base_name
-
-        i = 1
-        test_name = base_name
-        # If base_name exists, start appending numbers
-        if base_name in existing_names:
-            while True:
-                test_name = f"{core_name} ({i})"
-                if test_name not in existing_names:
-                    break
-                i += 1
-
-        return test_name
+        return generateUniqueName(self.tasks.values(), base_name)
 
     def exportActiveTask(self, filepath):
         active_task = self.getActiveTask()
@@ -248,7 +234,7 @@ class TaskStore(QObject):
 
         return True
 
-    def load(self):
+    def initialLoad(self):
         self.tasks.clear()
         self._active_id = None
 
@@ -267,6 +253,7 @@ class TaskStore(QObject):
                     name=row["name"],
                     steps=json.loads(j_steps) if j_steps else None,
                     created_at=row["created_at"],
+                    duration_ms=row["duration_ms"],
                     id=t_id
                 )
 

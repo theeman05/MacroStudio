@@ -36,7 +36,7 @@ class RecorderTab(QWidget):
         self.input_recorder = InputRecorder()
 
         self.lock_overlay = LockOverlay(self)
-        self.header_widget = TaskHeaderWidget(profile.tasks)
+        self.header_widget = TaskHeaderWidget(profile)
 
         layout_widget = QWidget()
         self.layout = QHBoxLayout(layout_widget)
@@ -129,6 +129,7 @@ class RecorderTab(QWidget):
         change_idx = self.undo_stack.index()
         if self.undo_stack.isClean() or change_idx == self.index_on_save: return
         json_steps = []
+        duration_s = 0
         for i in range(self.timeline_model.count()):
             item = self.timeline_list.item(i)
             if not item:
@@ -136,10 +137,11 @@ class RecorderTab(QWidget):
                 return
             widget = self.timeline_list.itemWidget(item)
             self._tryUpdatePartnerData(widget)
+            duration_s += getStepDuration(widget.timeline_data)
             json_steps.append(widget.timeline_data.toJson())
 
         self.index_on_save = change_idx
-        self.tasks.saveStepsToActive(json_steps)
+        self.tasks.saveStepsToActive(json_steps, round(duration_s * 1000))
         self._updateLabels()
 
     def getItemRow(self, item):
@@ -152,6 +154,11 @@ class RecorderTab(QWidget):
 
     # --- User Actions (Create Commands) ---
     def userAddsStep(self, insert_at, data: TimelineStep, try_insert_pair=1, dupe_lol=False):
+        if not self.tasks.getActiveTask():
+            new_task = self.tasks.createTask("New Task", set_as_active=True)
+            self.header_widget.task_selector.popup.addExternalItem(new_task)
+            self.header_widget.task_selector.setCurrentItem(new_task)
+
         if insert_at is None: insert_at = self.timeline_model.count()
         self.undo_stack.beginMacro(f"{"Add" if not dupe_lol else "Duplicate"} {data.action_type.value.title()}")
         try:
