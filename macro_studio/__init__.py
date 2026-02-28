@@ -4,7 +4,7 @@ from macro_studio.api.thread_context import ThreadContext as ThreadController
 from .core.types_and_enums import CaptureMode, TaskInterruptedException, TaskAbortException, TaskDeletedError, LogLevel
 from macro_studio.core.data.variable_config import VariableConfig
 from macro_studio.core.registries.type_handler import GlobalTypeHandler, register_handler
-from .actions import taskSleep, taskWaitForResume, taskHoldKey, taskMouseClick
+from .actions import taskSleep, taskWaitForResume, taskHoldKey, taskMouseClick, taskPasteText
 
 __all__ = [
     'MacroStudio',
@@ -21,5 +21,6 @@ __all__ = [
     'taskWaitForResume',
     'register_handler',
     'taskHoldKey',
-    'taskMouseClick'
+    'taskMouseClick',
+    'taskPasteText'
 ]

@@ -137,7 +137,7 @@ class RecorderTab(QWidget):
                 return
             widget = self.timeline_list.itemWidget(item)
             self._tryUpdatePartnerData(widget)
-            duration_s += getStepDuration(widget.timeline_data)
+            duration_s += getStepDuration(widget.timeline_data) or 0
             json_steps.append(widget.timeline_data.toJson())
 
         self.index_on_save = change_idx

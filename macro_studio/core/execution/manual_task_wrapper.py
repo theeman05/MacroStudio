@@ -1,4 +1,3 @@
-import pyperclip
 import pydirectinput
 from typing import TYPE_CHECKING
 from PySide6.QtCore import QPoint
@@ -6,7 +5,7 @@ from PySide6.QtCore import QPoint
 from macro_studio.core.types_and_enums import TaskInterruptedException
 from macro_studio.core.recording.input_translator import DirectInputTranslator
 from macro_studio.core.recording.timeline_handler import ActionType, TimelineStep, M_FUNCTION_TO_PYDIRECTINPUT
-from macro_studio.actions import taskSleep, taskWaitForResume
+from macro_studio.actions import taskSleep, taskWaitForResume, taskPasteText
 
 if TYPE_CHECKING:
     from macro_studio.core.data import VariableStore, TaskModel
@@ -21,24 +20,6 @@ def _isRelease(step):
 
 def _isScroll(step):
     return step.action_type == ActionType.MOUSE and isinstance(step.value[0], int)
-
-def pasteText(text_to_paste: str):
-    if not text_to_paste:
-        return
-
-    original_clipboard = pyperclip.paste()
-    try:
-        pyperclip.copy(text_to_paste)
-
-        yield from taskSleep(0.05)
-
-        pydirectinput.keyDown('ctrl')
-        pydirectinput.press('v')
-        pydirectinput.keyUp('ctrl')
-
-        yield from taskSleep(0.05)
-    finally:
-        pyperclip.copy(original_clipboard)
 
 
 class ManualTaskWrapper:
@@ -145,9 +126,68 @@ class ManualTaskWrapper:
                     delay_time = step.value or 0
                     yield from taskSleep(delay_time)
                 elif step.action_type == ActionType.TEXT:
-                    yield from pasteText(step.value)
+                    yield from taskPasteText(step.value)
                 else:
                     self._processStep(step)
         except TaskInterruptedException:
             self._releasePendingInputs()
             yield from taskWaitForResume()
+
+    def generatePythonCode(self, task_name="my_exported_task") -> str:
+        """Translates the current macro steps into a Python script."""
+
+        lines = [
+            "import pydirectinput",
+            "from macro_studio import Controller, taskSleep, pasteText",
+            "",
+            f"def {task_name.lower().replace(' ', '_')}(controller: Controller):"
+        ]
+
+        body_lines = []
+        vars_to_fetch = set()
+
+        for step in self.steps:
+            if step.action_type == ActionType.DELAY:
+                body_lines.append(f"    yield from taskSleep({step.value})")
+
+            elif step.action_type == ActionType.TEXT:
+                body_lines.append(f"    yield from pasteText({repr(step.value)})")
+
+            elif step.action_type == ActionType.KEYBOARD:
+                key = step.value
+                if _isPress(step):
+                    body_lines.append(f"    pydirectinput.keyDown({repr(key)})")
+                elif _isRelease(step):
+                    body_lines.append(f"    pydirectinput.keyUp({repr(key)})")
+
+            elif step.action_type == ActionType.MOUSE:
+                m_btn, m_pos = step.value
+                x_str, y_str = "None", "None"
+
+                # Check if the position is a Variable or a hardcoded QPoint
+                if isinstance(m_pos, str):
+                    vars_to_fetch.add(m_pos)
+                    safe_var = m_pos.replace(' ', '_')
+                    x_str, y_str = f"{safe_var}_pos.x()", f"{safe_var}_pos.y()"
+                elif m_pos:
+                    x_str, y_str = m_pos.x(), m_pos.y()
+
+                if _isScroll(step):
+                    body_lines.append(f"    pydirectinput.scroll(clicks={120 * m_btn}, x={x_str}, y={y_str})")
+                elif _isPress(step):
+                    body_lines.append(f"    pydirectinput.mouseDown(x={x_str}, y={y_str}, button={repr(m_btn)})")
+                elif _isRelease(step):
+                    body_lines.append(f"    pydirectinput.mouseUp(x={x_str}, y={y_str}, button={repr(m_btn)})")
+
+        # Inject variable fetching at the top of the function if needed
+        if vars_to_fetch:
+            for var_name in vars_to_fetch:
+                safe_var = var_name.replace(' ', '_')
+                lines.append(f"    {safe_var}_pos = controller.getVar({repr(var_name)})")
+            lines.append("")  # Empty line for readability
+
+        if not body_lines:
+            body_lines.append("    pass")
+
+        lines.extend(body_lines)
+        return "\n".join(lines)

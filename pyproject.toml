@@ -1,3 +1,20 @@
+[project]
+name = "macro-studio"
+version = "0.1.0"
+description = "A local desktop automation tool"
+dependencies = [
+    "PySide6",
+    "opencv-python",
+    "pytesseract",
+    "pydirectinput-rgx",
+    "mss",
+    "Pillow",
+    "pynput",
+    "numpy",
+    "qtawesome",
+    "shiboken6"
+]
+
 [tool.setuptools.package-data]
 "macro_studio" = ["*", "**/*"]
 
@@ -8,3 +25,7 @@ namespaces = false
 
 [project.scripts]
 macro-studio = "macro_studio.main:main"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

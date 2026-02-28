@@ -4,18 +4,18 @@
 
 **Limitless automation, powered by Python.**
 
-The **Macro Studio** is a robust automation framework that bridges the gap between simple macro recorders and complex software development. Unlike traditional click-recorders, this engine allows you to script logic in pure Python, giving you access to the full power of the language, from computer vision (OpenCV) to API requests while managing the lifecycle of your tasks through a user-friendly GUI.
+**Macro Studio** is a robust automation framework that bridges the gap between simple macro recorders and complex software development. Unlike traditional click-recorders, this engine allows you to script logic in pure Python, giving you access to the full power of the language—from computer vision (OpenCV) to API requests—while managing the lifecycle of your tasks through a sleek, user-friendly GUI.
 
 ## 🚀 Key Features
 
 ### ♾️ Infinite Possibilities
-If you can code it in Python, you can automate it. Import any library, use complex logic, and interact with the OS at a deep level. You are not limited to "click here, wait 5 seconds."
+Other macro recorders give you a tricycle; we are handing you the keys to a Saturn V rocket. If you can code it in Python, you can automate it. Import any library, use complex logic, and interact with the OS at a deep level. You are not limited to "click here, wait 5 seconds." If you want your macro to query a database, hit a REST API, and *then* click the button, go for it.
 
 ### 📂 Profile Management
 Manage multiple configurations with ease. Profiles allow:
 * **Environment Isolation:** Create specific profiles for different use cases, each with its own set of variable values.
 * **Task Persistence:** Save the enabled/disabled states and repeat toggles of your recorded tasks.
-* **Quick Swapping:** Switch between different automation setups instantly without having to re-recording tasks.
+* **Quick Swapping:** Switch between different automation setups instantly without having to re-record tasks.
 
 ### 🎛️ Visual Task Manager
 ![Task Manager UI](docs/assets/TaskManager.png)
@@ -24,26 +24,27 @@ The Visual Task Manager is the central orchestration hub of the studio. It provi
 
 #### Key Features
 * **Real-Time Polling:** The UI continuously polls the background engine at 10 FPS, providing immediate visual feedback on which task is actively executing.
-* **Strict Source of Truth:** Intelligently handles state conflicts between volatile code and persistent UI. Scripted task states remain session-only to protect code integrity, while manual task configurations (`repeat` toggles) are safely serialized to your JSON profile.
+* **Strict Source of Truth:** Intelligently handles state conflicts between volatile code and persistent UI. Scripted task states remain session-only to protect code integrity, while manual task configurations (`repeat` toggles) are safely serialized to your local database.
 * **Graceful Teardown:** Built-in OS signal interception ensures that interrupting a task via the UI (or a terminal `Ctrl+C`) gracefully shuts down background threads without crashing the application.
 
 ### 🧩 Variable Management
 ![Variables UI](docs/assets/VariablesTab.png) 
 
-Define variables (Integers, Booleans, Regions, Points, etc.) that are exposed in the GUI. Users can tweak settings (like `click_spot` or `scan_area`) safely via the interface without ever touching the code. 
+Define variables (Integers, Booleans, Regions, Points, etc.) that are exposed directly in the GUI. Users can tweak settings (like `click_spot` or `scan_area`) safely via the interface without ever touching your code. 
 
 These values are **saved per-profile**, allowing you to maintain different configurations for the same tasks across different environments.
 
-As of right now, the engine supports complex types like `QRect` (Regions) and `QPoint` (Coordinates) with visual overlays, ensuring users don't have to guess pixel coordinates (but they still can if they want to)!
+The engine currently supports complex types like `QRect` (Regions) and `QPoint` (Coordinates) with visual screen overlays. This ensures users don't have to blindly guess pixel coordinates—but they still can if they enjoy the suffering!
 
 ### 🎥 Visual Task Recorder (No-Code)
 ![Recorder UI](docs/assets/RecorderTab.png) 
 
-The entry barrier is now lowered! Using the `Recorder` tab, users can:
+For the days you just don't feel like typing. The entry barrier is now lowered! Using the `Recorder` tab, users can:
 
 * **Record:** Create new tasks by simply recording your mouse and keyboard actions, no coding required.
 * **Edit:** Fine-tune your recorded actions directly in the Engine's GUI (change delays, adjust coordinates) without opening a text editor.
 * **Global Task Pool:** Recorded tasks are created globally. You can then use the Task Manager to selectively add, remove, or toggle these tasks within specific profiles, allowing for modular automation design.
+* **Export to Python:** Recorded a tedious 50-click sequence and now want to wrap it in a custom `while` loop or an API call? Use the main 3 dots menu next to the selected task in the recorder tab and select "Export to Python" to instantly generate the standalone Python script. It's the perfect way to learn the engine's API, or just save yourself 10 minutes of typing.
 
 ### 🧬 Extensible Type System
 
@@ -51,28 +52,26 @@ The Engine features a robust **Global Type Registry** that bridges the gap betwe
 
 * **Smart UI Handling:** Users see friendly names (e.g., "Screen Region") instead of raw class names (e.g., `PySide6.QtCore.QRect`).
 * **Input Validation:** The UI provides immediate visual feedback (red borders/tooltips) if user input doesn't match your parser's rules.
-* **Automatic Serialization:** The engine knows how to save and load your object from config files.
+* **Automatic Serialization:** The engine knows exactly how to save and load your object from the database.
 
 ---
 
 ## 🛠️ Usage
 
 ### 1. Create a Standard Task (Generators)
-The most efficient way to write tasks is using Python Generators. This allows the engine to run hundreds of tasks simultaneously on a single thread. Setting the ``repeat`` kwarg to True (default False) makes the task automatically repeat upon finishing.
+The most efficient way to write tasks is using Python Generators. This allows the engine to run hundreds of tasks simultaneously on a single thread. Setting the `repeat` kwarg to True (default False) makes the task automatically loop upon finishing.
 
 * **Key Rule:** Use `yield from taskSleep(seconds)` instead of `time.sleep()` in standard tasks.
 
 ```python
 from macro_studio import Controller, taskSleep
 
-
 def my_task():
-    # Can print to the python terminal
+    # Can print directly to the python terminal
     print("Task starting...")
-    # Engine runs other tasks while this waits
+    # Engine runs other tasks while this waits!
     yield from taskSleep(1)
     print("Task resumed!")
-
 
 class BasicMacro:
     def __init__(self, studio):
@@ -83,28 +82,29 @@ class BasicMacro:
 
 ### 2. Controlling Tasks
 
-When you add a task using `addRunTask`, the engine returns a **Task Controller**. You can use this object to pause, resume, or stop other tasks dynamically.
+When you add a task using `addBasicTask`, the engine returns a **Task Controller**. You can use this object to pause, resume, or stop other tasks dynamically from within your scripts.
 
 ```python
+class ManagerMacro:
     def __init__(self, studio):
+        self.studio = studio
+        
+        # Save the controller to a variable
+        self.worker_ctrl = studio.addBasicTask(self.my_task)
+        
+        # Add a variable so the user can choose to sleep "my_task" or not
+        studio.addVar("Sleep My Task", bool, True, "Sleeps My Task On Execute")
+        studio.addBasicTask(self.manager_task)
 
-
-    self.studio = studio
-# Save the controller to a variable
-self.worker_ctrl = studio.addBasicTask(self.my_task)
-# Add a variable so the user can choose to sleep "my_task" or not and set the default value to "True"
-studio.addVar("Sleep My Task", bool, True, "Sleeps My Task On Execute")
-studio.addBasicTask(self.manager_task)
-
-
-def manager_task(self, controller: Controller):
-    # Log directly to the ui
-    controller.log("I am going to sleep")
-    # Get a user defined variable from the engine
-    if controller.getVar("Sleep My Task"):
-        self.worker_ctrl.pause()  # Worker stops immediately
-        yield from taskSleep(2)
-        self.worker_ctrl.resume()  # Worker continues
+    def manager_task(self, controller):
+        # Log directly to the UI
+        controller.log("Checking worker status...")
+        
+        # Get a user-defined variable from the engine
+        if controller.getVar("Sleep My Task"):
+            self.worker_ctrl.pause()  # Worker stops immediately
+            yield from taskSleep(2)
+            self.worker_ctrl.resume() # Worker continues
 
 ```
 
@@ -112,11 +112,10 @@ def manager_task(self, controller: Controller):
 
 Sometimes you need to run blocking code (like heavy calculations or network requests). This can be done using the `addThreadTask` method. You can run these in a separate thread while keeping them synchronized with the engine's Pause/Stop system.
 
-* **Key Rule:** Use `controller.sleep(seconds)` for threaded tasks. This ensures the thread pauses correctly if the task is paused.
+* **Key Rule:** Use `controller.sleep(seconds)` for threaded tasks. This ensures the thread pauses correctly if the user pauses the engine in the UI.
 
 ```python
 from macro_studio import ThreadController
-
 
 # 1. Define the function to run in the thread
 def heavy_lifting(controller: ThreadController):
@@ -133,11 +132,11 @@ class ThreadMacro:
 ```
 
 ### 4. Passing Custom Arguments
+
 Your task functions aren't limited to just the `controller`. You can pass any custom arguments and keyword arguments directly through the engine router to make your tasks dynamic and reusable!
 
 ```python
 from macro_studio import MacroStudio, Controller, taskSleep
-
 
 # Define a dynamic task
 def farm_resource(controller: Controller, resource_name: str, farm_duration: int):
@@ -147,16 +146,15 @@ def farm_resource(controller: Controller, resource_name: str, farm_duration: int
     yield from taskSleep(farm_duration)
     controller.log(f"Finished farming {resource_name}!")
 
-
 studio = MacroStudio("Farm Macro")
 
-# Queue the same task multiple times with different arguments!
+# Queue the exact same task multiple times with different arguments!
 studio.addBasicTask(farm_resource, "Gold", farm_duration=60)
 studio.addBasicTask(farm_resource, "Wood", farm_duration=120)
 
 ```
 
-### 4. Running the Engine
+### 5. Running the Engine
 
 Launch the GUI. Your tasks and variables will automatically appear.
 
@@ -174,22 +172,11 @@ if __name__ == "__main__":
 
 ```
 
-* **Edit Configs:** Click any task to modify its variables.
-* **Start/Pause/Stop:** Use the global controls or manage tasks individually.
-* **Visual Debugging:** Hover over region variables to see them highlighted on screen.
-
-For more detailed examples, check out the `Examples/` folder!
-
-### ⚙️ How it Works Under the Hood
-
-* **Generator Tasks:** Use **Cooperative Multitasking**. The engine cycles through tasks, running them until they `yield`. This makes the bot extremely lightweight and CPU efficient.
-* **Threaded Tasks:** Run in parallel. By using `controller.sleep()`, you bridge the gap, allowing the main engine to safely pause or stop these threads even though they are running outside the main loop.
-
 ---
 
 ### 🛡️ Handling Control Flow: Pauses & Stops
 
-The Engine uses exceptions to control your tasks. You must handle these correctly to ensure your macro pauses and stops safely when the user expects it to.
+The Engine uses exceptions to control your tasks. You must handle these correctly to ensure your macro pauses and stops safely when the user clicks the buttons in the UI.
 
 ---
 
@@ -207,7 +194,6 @@ To make a robust loop that survives an interruption, wrap your logic in a `try/e
 ```python
 from macro_studio import TaskInterruptedException, taskSleep, taskWaitForResume
 
-
 def task_count_to_ten():
     counter = 0
     while counter < 10:
@@ -216,11 +202,10 @@ def task_count_to_ten():
             yield from taskSleep(1)
 
         except TaskInterruptedException:
-            # 2. INTERRUPTED! The task was interrupted while paused.
+            # 2. INTERRUPTED! The task was paused via the UI.
             # We yield to the pause handler so the engine waits here.
             yield from taskWaitForResume()
-
-            # 3. When we return here, the loop continues naturally.
+            # 3. When the user clicks play, we return here and the loop continues naturally.
 
         counter += 1
 
@@ -235,7 +220,7 @@ In this example, an interruption crashes the loop because the exception is not h
 def task_fragile_count():
     counter = 0
     while counter < 10:
-        # DANGER: If interrupted, this line raises TaskInterruptedException.
+        # DANGER: If paused, this line raises TaskInterruptedException.
         # Since it isn't caught, the function aborts immediately!
         yield from taskSleep(1) 
         counter += 1
@@ -262,6 +247,7 @@ Use `finally` to guarantee cleanup. You do not need to explicitly catch `TaskAbo
 
 ```python
 from macro_studio import Controller
+
 def task_write_log(controller: Controller):
     # Open a resource that MUST be closed later
     f = open("log.txt", "w")
@@ -279,12 +265,11 @@ def task_write_log(controller: Controller):
 
 ```
 
-**❌ Incorrect Pattern: The "Phantom Thread"**
-Swallowing the exception causes the thread to stay alive as a "zombie" process, continuing to run even after the user thinks they stopped it.
+**❌ Incorrect Pattern: The "Zombie Thread"**
+Swallowing the exception causes the thread to stay alive as a "zombie" process, silently eating your CPU cycles and running even after the user thinks they stopped it.
 
 ```python
 from macro_studio import Controller, TaskAbortException
-
 
 def task_zombie_log(controller: Controller):
     while True:
@@ -294,7 +279,7 @@ def task_zombie_log(controller: Controller):
 
         except TaskAbortException as e:
             # ⛔ DANGER: You caught the Stop signal and only printed it!
-            # The loop will just spin around and run again.
+            # The loop will just spin around and run again forever.
             print(f"Stop ignored: {e}")
 
 ```
@@ -307,7 +292,6 @@ Registering a new type is as simple as adding a decorator. You define how to **R
 
 ```python
 from macro_studio import register_handler
-
 
 @register_handler
 class HeroData:

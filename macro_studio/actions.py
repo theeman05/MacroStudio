@@ -1,4 +1,4 @@
-import pydirectinput, threading
+import pydirectinput, pyperclip
 import numpy as np
 from contextlib import contextmanager
 from PySide6.QtCore import QPoint
@@ -82,3 +82,21 @@ def taskMouseClick(coords: QPoint=None, button: str=MOUSE_PRIMARY):
             yield from taskSleep(.1)
     except TaskInterruptedException:
         yield from taskWaitForResume()
+
+def taskPasteText(text_to_paste: str):
+    if not text_to_paste:
+        return
+
+    original_clipboard = pyperclip.paste()
+    try:
+        pyperclip.copy(text_to_paste)
+
+        yield from taskSleep(0.05)
+
+        pydirectinput.keyDown('ctrl')
+        pydirectinput.press('v')
+        pydirectinput.keyUp('ctrl')
+
+        yield from taskSleep(0.05)
+    finally:
+        pyperclip.copy(original_clipboard)

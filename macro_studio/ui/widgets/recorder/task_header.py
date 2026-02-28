@@ -9,6 +9,8 @@ from PySide6.QtCore import Qt, QPoint, Signal
 from macro_studio.ui.shared import HoverButton
 from macro_studio.ui.widgets.standalone.approval_event import ApprovalEvent
 from macro_studio.ui.widgets.standalone.selector import EditableSelectorDropdown
+from macro_studio.core.execution.manual_task_wrapper import ManualTaskWrapper
+from .code_export_dialog import CodeExportDialog
 
 if TYPE_CHECKING:
     from macro_studio.core.data import Profile
@@ -221,8 +223,13 @@ class TaskHeaderWidget(QWidget):
             act_dup = menu.addAction("Duplicate")
             act_dup.triggered.connect(self.task_selector.duplicateSelected)
 
-            act_export = menu.addAction("Export")
+            menu.addSeparator()
+
+            act_export = menu.addAction("Export to File")
             act_export.triggered.connect(self.onExport)
+
+            act_export_py = menu.addAction("Export to Python")
+            act_export_py.triggered.connect(self.onExportToPy)
 
             menu.addSeparator()
 
@@ -242,3 +249,13 @@ class TaskHeaderWidget(QWidget):
         filepath, _ = QFileDialog.getSaveFileName(self, "Export Task", "", "Task Files (*.task)")
         if filepath:
             self.tasks.exportActiveTask(filepath)
+
+    def onExportToPy(self):
+        active_task = self.tasks.getActiveTask()
+        if not self.confirmDiscardChanges() or not active_task: return
+        temp_wrapper = ManualTaskWrapper(self.profile.vars, active_task)
+        generated_code = temp_wrapper.generatePythonCode(task_name=active_task.name)
+
+        dialog = CodeExportDialog(generated_code, parent=self)
+        dialog.exec()
+        dialog.deleteLater()
